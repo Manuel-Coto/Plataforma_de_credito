@@ -1,0 +1,16 @@
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins*
+.packages
+build/
+# Rust
+target/
+# Entorno y secretos
+.env
+.env.*
+!.env.example
+# IDE
+.idea/
+*.iml
+# Windows
+Thumbs.db
