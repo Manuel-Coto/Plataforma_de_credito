@@ -61,24 +61,66 @@ pub async fn inicializar_bases(db: &CouchDb) -> Result<(), InitError> {
     inicializar_indices(db).await
 }
 
-pub async fn inicializar_indices(db: &CouchDb) -> Result<(), InitError> {
-    let definitions = [
+pub async fn inicializar_indices(
+    db: &CouchDb,
+) -> Result<(), InitError> {
+    let definitions: [(&str, &str); 12] = [
         (
             "empresas",
             include_str!("../../../../database/empresas/indexes/por_nit.json"),
+        ),
+        (
+            "empresas",
+            include_str!("../../../../database/empresas/indexes/por_responsable.json"),
         ),
         (
             "usuarios",
             include_str!("../../../../database/usuarios/indexes/por_correo.json"),
         ),
         (
-            "empresas",
-            include_str!("../../../../database/empresas/indexes/por_responsable.json"),
+            "facturas",
+            include_str!("../../../../database/facturas/indexes/por_dte.json"),
+        ),
+        (
+            "facturas",
+            include_str!("../../../../database/facturas/indexes/por_empresa.json"),
+        ),
+        (
+            "facturas",
+            include_str!("../../../../database/facturas/indexes/por_estado.json"),
+        ),
+        (
+            "facturas",
+            include_str!("../../../../database/facturas/indexes/por_vencimiento.json"),
+        ),
+
+        (
+            "ofertas",
+            include_str!("../../../../database/ofertas/indexes/por_estado.json"),
+        ),
+        (
+            "ofertas",
+            include_str!("../../../../database/ofertas/indexes/por_factura.json"),
+        ),
+
+        (
+            "operaciones",
+            include_str!("../../../../database/operaciones/indexes/por_estado.json"),
+        ),
+        (
+            "operaciones",
+            include_str!("../../../../database/operaciones/indexes/por_inversionista.json"),
+        ),
+        (
+            "operaciones",
+            include_str!("../../../../database/operaciones/indexes/por_oferta.json"),
         ),
     ];
+
     for (base, source) in definitions {
-        let definition: Value =
-            serde_json::from_str(source).map_err(|_| InitError::InvalidIndex { base })?;
+        let definition: Value = serde_json::from_str(source)
+            .map_err(|_| InitError::InvalidIndex { base })?;
+
         let response = db
             .client
             .post(format!("{}/{base}/_index", db.url))
@@ -87,20 +129,32 @@ pub async fn inicializar_indices(db: &CouchDb) -> Result<(), InitError> {
             .send()
             .await
             .map_err(|_| InitError::Transport)?;
-        if !matches!(response.status(), StatusCode::OK | StatusCode::CREATED) {
+
+        if !matches!(
+            response.status(),
+            StatusCode::OK | StatusCode::CREATED
+        ) {
             return Err(InitError::Http {
                 base,
                 status: response.status().as_u16(),
             });
         }
+
         let body: Value = response
             .json()
             .await
             .map_err(|_| InitError::InvalidIndex { base })?;
-        if !matches!(body["result"].as_str(), Some("created" | "exists")) {
+
+        if !matches!(
+            body["result"].as_str(),
+            Some("created" | "exists")
+        ) {
             return Err(InitError::InvalidIndex { base });
         }
+
         tracing::info!(base, "Índice Mango disponible");
     }
+
     Ok(())
+
 }

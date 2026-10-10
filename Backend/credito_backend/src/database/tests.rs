@@ -68,8 +68,8 @@ async fn startup_is_idempotent_and_rejects_errors_safely() {
     inicializar_bases(&db).await.unwrap();
     {
         let state = state.lock().unwrap();
-        assert_eq!(state.calls.len(), 18);
-        for chunk in state.calls.chunks(9) {
+        assert_eq!(state.calls.len(), 40);
+        for chunk in state.calls.chunks(20) {
             assert_eq!(
                 chunk[..6].iter().map(|c| c.0.as_str()).collect::<Vec<_>>(),
                 BASES
