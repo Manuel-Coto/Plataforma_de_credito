@@ -1,0 +1,6 @@
+{
+  "index": { "fields": ["correo"] },
+  "ddoc": "usuarios-correo",
+  "name": "por-correo",
+  "type": "json"
+}
