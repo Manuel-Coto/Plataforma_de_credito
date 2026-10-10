@@ -41,6 +41,7 @@ impl EmpresaService {
         let document = EmpresaDocumento {
             id: None,
             rev: None,
+            extra: Default::default(),
             datos: EmpresaDatos {
                 nombre: input.nombre,
                 nit: input.nit,
@@ -56,12 +57,12 @@ impl EmpresaService {
         repository.save(document).await?.into_empresa()
     }
 
-    pub async fn get(&self, user: &Usuario, id: &str) -> Result<Empresa, EmpresaError> {
+    pub async fn get(&self, user: &Usuario, id: &str) -> Result<(Empresa, String), EmpresaError> {
         require_access_role(user)?;
         validate_id(id)?;
         let document = self.repository()?.get(id).await?;
         authorize_document(user, &document)?;
-        document.into_empresa()
+        reviewed_response(document)
     }
 
     pub async fn list(
@@ -114,6 +115,14 @@ impl EmpresaService {
         let repository = self.repository()?;
         let mut document = repository.get(id).await?;
         authorize_document(user, &document)?;
+        let changed = document.datos.nombre != input.nombre
+            || document.datos.nit != input.nit
+            || document.datos.correo != input.correo
+            || document.datos.telefono != input.telefono
+            || document.datos.direccion != input.direccion;
+        if !changed {
+            return document.into_empresa();
+        }
         if repository.nit_exists(&input.nit, Some(id)).await? {
             return Err(EmpresaError::Duplicate);
         }
@@ -122,6 +131,12 @@ impl EmpresaService {
         document.datos.correo = input.correo;
         document.datos.telefono = input.telefono;
         document.datos.direccion = input.direccion;
+        if matches!(
+            document.datos.estado,
+            EstadoEmpresa::Activa | EstadoEmpresa::Rechazada
+        ) {
+            document.datos.estado = EstadoEmpresa::Pendiente;
+        }
         document.datos.fecha_actualizacion = Some(Utc::now());
         repository.save(document).await?.into_empresa()
     }
@@ -139,6 +154,55 @@ impl EmpresaService {
         }
         document.into_empresa()
     }
+
+    pub async fn review(
+        &self,
+        user: &Usuario,
+        id: &str,
+        revision: &str,
+        approved: bool,
+    ) -> Result<(Empresa, String), EmpresaError> {
+        if user.rol != Rol::Administrador {
+            return Err(EmpresaError::Forbidden);
+        }
+        validate_id(id)?;
+        let repository = self.repository()?;
+        let mut document = repository.get(id).await?;
+        if document.rev.as_deref() != Some(revision) {
+            return Err(EmpresaError::PreconditionFailed);
+        }
+        if document
+            .datos
+            .usuario_responsable_id
+            .as_ref()
+            .is_none_or(|id| id.trim().is_empty())
+        {
+            return Err(EmpresaError::InvalidTransition);
+        }
+        let target = if approved {
+            EstadoEmpresa::Activa
+        } else {
+            EstadoEmpresa::Rechazada
+        };
+        if document.datos.estado == target {
+            return reviewed_response(document);
+        }
+        if document.datos.estado != EstadoEmpresa::Pendiente {
+            return Err(EmpresaError::InvalidTransition);
+        }
+        document.datos.estado = target;
+        document.datos.fecha_actualizacion = Some(Utc::now());
+        reviewed_response(repository.save(document).await?)
+    }
+}
+
+fn reviewed_response(document: EmpresaDocumento) -> Result<(Empresa, String), EmpresaError> {
+    let revision = document
+        .rev
+        .clone()
+        .filter(|rev| !rev.is_empty())
+        .ok_or(EmpresaError::Upstream)?;
+    Ok((document.into_empresa()?, revision))
 }
 
 fn require_access_role(user: &Usuario) -> Result<(), EmpresaError> {

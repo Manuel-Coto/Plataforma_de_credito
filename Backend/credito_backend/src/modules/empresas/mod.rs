@@ -14,6 +14,9 @@ pub enum EmpresaError {
     NotFound,
     Duplicate,
     Conflict,
+    InvalidTransition,
+    PreconditionRequired,
+    PreconditionFailed,
     Configuration,
     Unavailable,
     IndexUnavailable,
@@ -25,6 +28,9 @@ impl IntoResponse for EmpresaError {
         let (status, message) = match self {
             Self::Invalid(message) => (StatusCode::BAD_REQUEST, message),
             Self::Forbidden => (StatusCode::FORBIDDEN, "Permisos insuficientes"),
+            Self::PreconditionRequired => (StatusCode::PRECONDITION_REQUIRED, "Se requiere If-Match con la revisión consultada"),
+            Self::PreconditionFailed => (StatusCode::PRECONDITION_FAILED, "La revisión cambió; consulte la empresa nuevamente"),
+            Self::InvalidTransition => (StatusCode::CONFLICT, "La empresa no permite esta decisión de revisión"),
             Self::NotFound => (StatusCode::NOT_FOUND, "Empresa inexistente"),
             Self::Duplicate => (StatusCode::CONFLICT, "Ya existe una empresa con ese NIT"),
             Self::Conflict => (

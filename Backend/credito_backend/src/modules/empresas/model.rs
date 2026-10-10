@@ -57,6 +57,8 @@ pub struct EmpresaDocumento {
     pub rev: Option<String>,
     #[serde(flatten)]
     pub datos: EmpresaDatos,
+    #[serde(flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
 }
 
 impl EmpresaDocumento {

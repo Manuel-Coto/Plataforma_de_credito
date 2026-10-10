@@ -22,6 +22,7 @@ struct MockDb {
     malformed: bool,
     missing_index: bool,
     ignore_owner: bool,
+    race_on_update: bool,
 }
 type Db = Arc<Mutex<MockDb>>;
 type Reply = (StatusCode, Json<Value>);
@@ -139,6 +140,16 @@ async fn update(
             Json(json!({"error": "not_found", "reason": "missing"})),
         );
     };
+    if db.race_on_update {
+        let mut raced = old.clone();
+        raced["_rev"] = json!("2-concurrent");
+        raced["nombre"] = json!("Cambio concurrente");
+        db.documents.insert(id, raced);
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({"error":"conflict","reason":"secret-password"})),
+        );
+    }
     assert_eq!(value["_id"], id);
     if value["_rev"] != old["_rev"] {
         return (StatusCode::CONFLICT, Json(json!({"error": "conflict"})));
@@ -212,7 +223,7 @@ const TEST_SECRET: &str = "secreto-ficticio-de-pruebas-con-32-caracteres";
 async fn user_read(Path(id): Path<String>) -> Reply {
     let role = match id.as_str() {
         "pyme" | "otra-pyme" => "pyme",
-        "admin" => "administrador",
+        "admin" | "admin-inactivo" => "administrador",
         "inversor" => "inversionista",
         _ => {
             return (
@@ -225,7 +236,7 @@ async fn user_read(Path(id): Path<String>) -> Reply {
         StatusCode::OK,
         Json(json!({
             "_id": id, "_rev":"1-test", "nombre":"Usuario ficticio", "correo":"ficticio@example.test",
-            "password_hash":"hash-no-usado-en-autenticacion", "rol":role, "estado":"activo",
+            "password_hash":"hash-no-usado-en-autenticacion", "rol":role, "estado":if id == "admin-inactivo" {"inactivo"} else {"activo"},
             "fecha_creacion":"2026-01-01T00:00:00Z", "fecha_actualizacion":"2026-01-01T00:00:00Z"
         })),
     )
@@ -260,6 +271,387 @@ fn input(nit: &str) -> Value {
         "telefono": "0000-0000", "direccion": "Dirección ficticia"})
 }
 
+fn review_document(state: &str) -> Value {
+    json!({
+        "_id":"revision-test", "_rev":"1-test", "nombre":"Empresa ficticia", "nit":"REVIEW-TEST",
+        "correo":"contacto@example.test", "telefono":"0000-0000", "direccion":"Dirección ficticia",
+        "estado":state, "usuario_responsable_id":"pyme", "fecha_creacion":"2026-01-01T00:00:00Z",
+        "fecha_actualizacion":"2026-01-02T00:00:00Z", "propiedad_adicional":{"conservar":true}
+    })
+}
+
+#[tokio::test]
+async fn review_permissions_precede_preconditions_and_document_lookup() {
+    let (api, _couch, db) = setup().await;
+    for actor in ["pyme", "otra-pyme", "inversor", "admin-inactivo"] {
+        for action in ["aprobar", "rechazar"] {
+            let response = client_for(actor)
+                .patch(format!("{}/api/empresas/inexistente/{action}", api.url))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                if actor == "admin-inactivo" {
+                    StatusCode::UNAUTHORIZED
+                } else {
+                    StatusCode::FORBIDDEN
+                }
+            );
+        }
+    }
+    assert!(db.lock().unwrap().requests.is_empty());
+}
+
+#[tokio::test]
+async fn individual_etag_and_admin_preconditions_use_real_revision() {
+    let (api, _couch, db) = setup().await;
+    db.lock()
+        .unwrap()
+        .documents
+        .insert("revision-test".into(), review_document("pendiente"));
+    let url = format!("{}/api/empresas/revision-test", api.url);
+    let response = client_for("pyme").get(&url).send().await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["etag"], "\"1-test\"");
+    assert_eq!(response.headers()["cache-control"], "no-store");
+    let body: Value = response.json().await.unwrap();
+    assert!(body.get("_rev").is_none());
+    assert!(body.get("propiedad_adicional").is_none());
+    let foreign = client_for("otra-pyme").get(&url).send().await.unwrap();
+    assert_eq!(foreign.status(), StatusCode::NOT_FOUND);
+    assert!(foreign.headers().get("etag").is_none());
+    let admin = client_for("admin");
+    for action in ["aprobar", "rechazar"] {
+        assert_eq!(
+            admin
+                .patch(format!("{url}/{action}"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::PRECONDITION_REQUIRED
+        );
+        for invalid in [
+            "",
+            "*",
+            "W/\"1-test\"",
+            "1-test",
+            "\"\"",
+            "\"1-test\", \"2-test\"",
+        ] {
+            assert_eq!(
+                admin
+                    .patch(format!("{url}/{action}"))
+                    .header("if-match", invalid)
+                    .send()
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::BAD_REQUEST
+            );
+        }
+        assert_eq!(
+            admin
+                .patch(format!("{url}/{action}"))
+                .header("if-match", "\"1-test\"")
+                .header("if-match", "\"2-test\"")
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            admin
+                .patch(format!("{url}/{action}"))
+                .header("if-match", "\"0-stale\"")
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::PRECONDITION_FAILED
+        );
+        assert_eq!(
+            admin
+                .patch(format!("{}/api/empresas/inexistente/{action}", api.url))
+                .header("if-match", "\"1-test\"")
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NOT_FOUND
+        );
+    }
+    assert_eq!(
+        db.lock().unwrap().documents["revision-test"],
+        review_document("pendiente")
+    );
+    assert!(db.lock().unwrap().requests.is_empty());
+}
+
+#[tokio::test]
+async fn review_transitions_and_idempotence_require_matching_revision() {
+    let (api, _couch, db) = setup().await;
+    let admin = client_for("admin");
+    for (action, target, opposite) in [
+        ("aprobar", "activa", "rechazar"),
+        ("rechazar", "rechazada", "aprobar"),
+    ] {
+        db.lock()
+            .unwrap()
+            .documents
+            .insert("revision-test".into(), review_document("pendiente"));
+        let url = format!("{}/api/empresas/revision-test", api.url);
+        let response = admin
+            .patch(format!("{url}/{action}"))
+            .header("if-match", "\"1-test\"")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()["etag"], "\"2-test\"");
+        let body: Value = response.json().await.unwrap();
+        assert_eq!(body["estado"], target);
+        let saved = db.lock().unwrap().documents["revision-test"].clone();
+        for field in [
+            "_id",
+            "usuario_responsable_id",
+            "fecha_creacion",
+            "nombre",
+            "nit",
+            "correo",
+            "telefono",
+            "direccion",
+            "propiedad_adicional",
+        ] {
+            assert_eq!(saved[field], review_document("pendiente")[field]);
+        }
+        assert_ne!(
+            saved["fecha_actualizacion"],
+            review_document("pendiente")["fecha_actualizacion"]
+        );
+        assert_eq!(
+            admin
+                .patch(format!("{url}/{action}"))
+                .header("if-match", "\"1-test\"")
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::PRECONDITION_FAILED
+        );
+        let repeated = admin
+            .patch(format!("{url}/{action}"))
+            .header("if-match", "\"2-test\"")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(repeated.status(), StatusCode::OK);
+        assert_eq!(repeated.headers()["etag"], "\"2-test\"");
+        assert_eq!(repeated.json::<Value>().await.unwrap(), body);
+        assert_eq!(
+            admin
+                .patch(format!("{url}/{opposite}"))
+                .header("if-match", "\"2-test\"")
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::CONFLICT
+        );
+        assert_eq!(db.lock().unwrap().documents["revision-test"], saved);
+    }
+    assert_eq!(
+        db.lock()
+            .unwrap()
+            .requests
+            .iter()
+            .filter(|(method, _)| method == "update")
+            .count(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn unowned_or_inactive_documents_cannot_be_reviewed() {
+    let (api, _couch, db) = setup().await;
+    let admin = client_for("admin");
+    for state in ["pendiente", "activa", "rechazada", "inactiva"] {
+        for owner in [
+            None,
+            Some(Value::Null),
+            Some(json!("")),
+            Some(json!("pyme")),
+        ] {
+            if owner == Some(json!("pyme")) && state != "inactiva" {
+                continue;
+            }
+            let mut doc = review_document(state);
+            match owner {
+                None => {
+                    doc.as_object_mut()
+                        .unwrap()
+                        .remove("usuario_responsable_id");
+                }
+                Some(owner) => doc["usuario_responsable_id"] = owner,
+            }
+            db.lock()
+                .unwrap()
+                .documents
+                .insert("revision-test".into(), doc.clone());
+            for action in ["aprobar", "rechazar"] {
+                assert_eq!(
+                    admin
+                        .patch(format!("{}/api/empresas/revision-test/{action}", api.url))
+                        .header("if-match", "\"1-test\"")
+                        .send()
+                        .await
+                        .unwrap()
+                        .status(),
+                    StatusCode::CONFLICT
+                );
+                assert_eq!(db.lock().unwrap().documents["revision-test"], doc);
+            }
+        }
+    }
+    assert!(db.lock().unwrap().requests.is_empty());
+}
+
+#[tokio::test]
+async fn actual_edits_reset_review_in_one_write_and_identical_edits_do_not_write() {
+    let (api, _couch, db) = setup().await;
+    let url = format!("{}/api/empresas/revision-test", api.url);
+    for actor in ["pyme", "admin"] {
+        for state in ["activa", "rechazada", "pendiente", "inactiva"] {
+            let old = review_document(state);
+            db.lock()
+                .unwrap()
+                .documents
+                .insert("revision-test".into(), old.clone());
+            let mut body = input(" REVIEW-TEST ");
+            body["nombre"] = json!(" Empresa ficticia ");
+            let before = db.lock().unwrap().requests.len();
+            assert_eq!(
+                client_for(actor)
+                    .put(&url)
+                    .json(&body)
+                    .send()
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::OK
+            );
+            assert_eq!(db.lock().unwrap().documents["revision-test"], old);
+            assert_eq!(db.lock().unwrap().requests.len(), before);
+            body["nombre"] = json!("Datos corregidos");
+            let response = client_for(actor)
+                .put(&url)
+                .json(&body)
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let saved = db.lock().unwrap().documents["revision-test"].clone();
+            assert_eq!(
+                saved["estado"],
+                if state == "inactiva" {
+                    "inactiva"
+                } else {
+                    "pendiente"
+                }
+            );
+            assert_eq!(saved["_rev"], "2-test");
+            assert_eq!(saved["nombre"], "Datos corregidos");
+            for field in [
+                "_id",
+                "usuario_responsable_id",
+                "fecha_creacion",
+                "propiedad_adicional",
+            ] {
+                assert_eq!(saved[field], old[field]);
+            }
+            let writes: Vec<_> = db.lock().unwrap().requests[before..]
+                .iter()
+                .filter(|(method, _)| method == "update")
+                .cloned()
+                .collect();
+            assert_eq!(writes.len(), 1);
+            assert_eq!(writes[0].1["estado"], saved["estado"]);
+        }
+    }
+}
+
+#[tokio::test]
+async fn review_race_returns_conflict_without_retrying_or_overwriting() {
+    let (api, _couch, db) = setup().await;
+    {
+        let mut db = db.lock().unwrap();
+        db.documents
+            .insert("revision-test".into(), review_document("pendiente"));
+        db.race_on_update = true;
+    }
+    let response = client_for("admin")
+        .patch(format!("{}/api/empresas/revision-test/aprobar", api.url))
+        .header("if-match", "\"1-test\"")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert!(!response.text().await.unwrap().contains("secret"));
+    let db = db.lock().unwrap();
+    assert_eq!(db.documents["revision-test"]["_rev"], "2-concurrent");
+    assert_eq!(
+        db.documents["revision-test"]["nombre"],
+        "Cambio concurrente"
+    );
+    assert_eq!(db.documents["revision-test"]["estado"], "pendiente");
+    assert_eq!(
+        db.requests
+            .iter()
+            .filter(|(method, _)| method == "update")
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn competing_admin_decisions_have_only_one_winner() {
+    let (api, _couch, db) = setup().await;
+    db.lock()
+        .unwrap()
+        .documents
+        .insert("revision-test".into(), review_document("pendiente"));
+    let client = client_for("admin");
+    let url = format!("{}/api/empresas/revision-test", api.url);
+    let approve = client
+        .patch(format!("{url}/aprobar"))
+        .header("if-match", "\"1-test\"")
+        .send();
+    let reject = client
+        .patch(format!("{url}/rechazar"))
+        .header("if-match", "\"1-test\"")
+        .send();
+    let (a, b) = tokio::join!(approve, reject);
+    let (a, b) = (a.unwrap().status(), b.unwrap().status());
+    assert!(
+        (a == StatusCode::OK
+            && [StatusCode::CONFLICT, StatusCode::PRECONDITION_FAILED].contains(&b))
+            || (b == StatusCode::OK
+                && [StatusCode::CONFLICT, StatusCode::PRECONDITION_FAILED].contains(&a))
+    );
+    let saved = db.lock().unwrap().documents["revision-test"].clone();
+    assert_eq!(saved["_rev"], "2-test");
+    assert_eq!(
+        saved["estado"],
+        if a == StatusCode::OK {
+            "activa"
+        } else {
+            "rechazada"
+        }
+    );
+}
+
 #[tokio::test]
 async fn all_company_routes_require_valid_unexpired_jwt() {
     let (api, _couch, db) = setup().await;
@@ -275,6 +667,8 @@ async fn all_company_routes_require_valid_unexpired_jwt() {
             (reqwest::Method::GET, "/empresa-ajena"),
             (reqwest::Method::PUT, "/empresa-ajena"),
             (reqwest::Method::PATCH, "/empresa-ajena/desactivar"),
+            (reqwest::Method::PATCH, "/empresa-ajena/aprobar"),
+            (reqwest::Method::PATCH, "/empresa-ajena/rechazar"),
         ] {
             let mut request = client
                 .request(method, format!("{}/api/empresas{path}", api.url))
@@ -325,9 +719,11 @@ async fn ownership_is_assigned_by_server_and_cannot_be_changed_by_client() {
             StatusCode::BAD_REQUEST
         );
     }
+    let mut changed = input("OWNER-TEST");
+    changed["nombre"] = json!("Nombre modificado");
     let updated: Value = client_for("admin")
         .put(format!("{url}/{id}"))
-        .json(&input("OWNER-TEST"))
+        .json(&changed)
         .send()
         .await
         .unwrap()
@@ -829,7 +1225,7 @@ async fn preserves_existing_test_document_and_state_during_update() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let updated: Value = response.json().await.unwrap();
-    assert_eq!(updated["estado"], "activa");
+    assert_eq!(updated["estado"], "pendiente");
     assert!(updated["fecha_creacion"].is_null());
     assert!(updated["fecha_actualizacion"].as_str().is_some());
 }
