@@ -1,0 +1,7 @@
+{
+  "index": {
+    "fields": ["tipo", "estado", "fecha_creacion"]
+  },
+  "name": "inversiones-por-estado",
+  "type": "json"
+}

@@ -1,0 +1,7 @@
+{
+  "index": {
+    "fields": ["tipo", "estado", "fecha_cierre"]
+  },
+  "name": "ofertas-por-estado",
+  "type": "json"
+}

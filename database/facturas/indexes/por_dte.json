@@ -1,0 +1,7 @@
+{
+  "index": {
+    "fields": ["tipo", "dte.codigo_generacion"]
+  },
+  "name": "facturas-por-dte",
+  "type": "json"
+}

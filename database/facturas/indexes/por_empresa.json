@@ -1,0 +1,7 @@
+{
+  "index": {
+    "fields": ["tipo", "empresa_id", "fecha_creacion"]
+  },
+  "name": "facturas-por-empresa",
+  "type": "json"
+}

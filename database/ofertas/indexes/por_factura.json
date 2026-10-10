@@ -1,0 +1,7 @@
+{
+  "index": {
+    "fields": ["tipo", "factura_id"]
+  },
+  "name": "ofertas-por-factura",
+  "type": "json"
+}

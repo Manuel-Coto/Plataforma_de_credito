@@ -1,0 +1,7 @@
+{
+  "index": {
+    "fields": ["tipo", "fecha_vencimiento"]
+  },
+  "name": "facturas-por-vencimiento",
+  "type": "json"
+}

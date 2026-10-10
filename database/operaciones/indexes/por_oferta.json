@@ -1,0 +1,7 @@
+{
+  "index": {
+    "fields": ["tipo", "oferta_id", "fecha_creacion"]
+  },
+  "name": "inversiones-por-oferta",
+  "type": "json"
+}

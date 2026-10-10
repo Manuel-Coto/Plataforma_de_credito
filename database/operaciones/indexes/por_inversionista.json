@@ -1,0 +1,7 @@
+{
+  "index": {
+    "fields": ["tipo", "inversionista_id", "fecha_creacion"]
+  },
+  "name": "inversiones-por-inversionista",
+  "type": "json"
+}
