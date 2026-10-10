@@ -133,7 +133,7 @@ impl EmpresaRepository {
                     tracing::error!(
                         etapa = "indice_mango",
                         codigo = "no_usable_index",
-                        "La consulta requiere el índice empresas-nit/por-nit; crear o revisar su definición"
+                        "Revisar los índices empresas-nit/por-nit y empresas-responsable/por-responsable"
                     );
                     Err(EmpresaError::IndexUnavailable)
                 } else {
@@ -213,12 +213,18 @@ impl EmpresaRepository {
         &self,
         limit: u32,
         bookmark: Option<String>,
+        owner: Option<&str>,
     ) -> Result<(Vec<EmpresaDocumento>, String), EmpresaError> {
         let mut query = json!({
             "selector": {"nit": {"$gte": ""}},
             "sort": [{"nit": "asc"}], "limit": limit,
             "use_index": ["empresas-nit", "por-nit"]
         });
+        if let Some(owner) = owner {
+            query["selector"]["usuario_responsable_id"] = json!({"$eq": owner});
+            query["sort"] = json!([{"usuario_responsable_id": "asc"}, {"nit": "asc"}]);
+            query["use_index"] = json!(["empresas-responsable", "por-responsable"]);
+        }
         if let Some(bookmark) = bookmark {
             query["bookmark"] = json!(bookmark);
         }

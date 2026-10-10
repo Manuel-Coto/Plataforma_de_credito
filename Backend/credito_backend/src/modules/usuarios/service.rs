@@ -83,6 +83,11 @@ impl Attempts {
 }
 
 impl UsuarioService {
+    #[cfg(test)]
+    pub(crate) async fn for_test(url: &str, secret: &str) -> Self {
+        let repository = UsuarioRepository::new(url, "test".into(), "test".into()).unwrap();
+        Self::new(repository, secret.into(), 3600).await.unwrap()
+    }
     pub fn disabled() -> Self {
         Self { inner: None }
     }

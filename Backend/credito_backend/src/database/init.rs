@@ -71,6 +71,10 @@ pub async fn inicializar_indices(db: &CouchDb) -> Result<(), InitError> {
             "usuarios",
             include_str!("../../../../database/usuarios/indexes/por_correo.json"),
         ),
+        (
+            "empresas",
+            include_str!("../../../../database/empresas/indexes/por_responsable.json"),
+        ),
     ];
     for (base, source) in definitions {
         let definition: Value =

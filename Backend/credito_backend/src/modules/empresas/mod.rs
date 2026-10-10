@@ -10,6 +10,7 @@ use serde_json::json;
 #[derive(Debug)]
 pub enum EmpresaError {
     Invalid(&'static str),
+    Forbidden,
     NotFound,
     Duplicate,
     Conflict,
@@ -23,6 +24,7 @@ impl IntoResponse for EmpresaError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match self {
             Self::Invalid(message) => (StatusCode::BAD_REQUEST, message),
+            Self::Forbidden => (StatusCode::FORBIDDEN, "Permisos insuficientes"),
             Self::NotFound => (StatusCode::NOT_FOUND, "Empresa inexistente"),
             Self::Duplicate => (StatusCode::CONFLICT, "Ya existe una empresa con ese NIT"),
             Self::Conflict => (
@@ -39,7 +41,7 @@ impl IntoResponse for EmpresaError {
             ),
             Self::IndexUnavailable => (
                 StatusCode::SERVICE_UNAVAILABLE,
-                "Índice Mango de empresas no disponible; configure empresas-nit/por-nit",
+                "Índice Mango de empresas no disponible; revise empresas-nit/por-nit y empresas-responsable/por-responsable",
             ),
             Self::Upstream => (
                 StatusCode::BAD_GATEWAY,

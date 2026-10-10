@@ -1,0 +1,44 @@
+name: Backend Rust
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Formato, compilacion y pruebas
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: Backend/credito_backend
+
+    steps:
+      - name: Obtener codigo
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Instalar Rust estable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Cache de Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: Backend/credito_backend -> target
+
+      - name: Comprobar formato
+        run: cargo fmt --check
+
+      - name: Comprobar compilacion
+        run: cargo check --locked
+
+      - name: Ejecutar pruebas
+        run: cargo test --locked

@@ -19,7 +19,6 @@ pub struct EmpresaInput {
     pub correo: String,
     pub telefono: String,
     pub direccion: String,
-    pub usuario_responsable_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

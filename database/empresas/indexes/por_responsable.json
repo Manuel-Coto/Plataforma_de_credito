@@ -1,0 +1,6 @@
+{
+  "index": { "fields": ["usuario_responsable_id", "nit"] },
+  "ddoc": "empresas-responsable",
+  "name": "por-responsable",
+  "type": "json"
+}

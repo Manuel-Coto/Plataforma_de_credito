@@ -21,6 +21,7 @@ struct MockDb {
     failure: Option<StatusCode>,
     malformed: bool,
     missing_index: bool,
+    ignore_owner: bool,
 }
 type Db = Arc<Mutex<MockDb>>;
 type Reply = (StatusCode, Json<Value>);
@@ -51,6 +52,17 @@ async fn find(State(state): State<Db>, headers: HeaderMap, Json(query): Json<Val
         );
     }
     let nit = query["selector"]["nit"]["$eq"].as_str();
+    let owner = query["selector"]["usuario_responsable_id"]["$eq"].as_str();
+    if owner.is_some() {
+        assert_eq!(
+            query["use_index"],
+            json!(["empresas-responsable", "por-responsable"])
+        );
+        assert_eq!(
+            query["sort"],
+            json!([{"usuario_responsable_id":"asc"},{"nit":"asc"}])
+        );
+    }
     let except = query["selector"]["_id"]["$ne"].as_str();
     let offset = query["bookmark"]
         .as_str()
@@ -61,6 +73,9 @@ async fn find(State(state): State<Db>, headers: HeaderMap, Json(query): Json<Val
         .documents
         .values()
         .filter(|d| nit.is_none_or(|nit| d["nit"] == nit) && except.is_none_or(|id| d["_id"] != id))
+        .filter(|d| {
+            db.ignore_owner || owner.is_none_or(|owner| d["usuario_responsable_id"] == owner)
+        })
         .skip(offset)
         .take(limit)
         .cloned()
@@ -173,17 +188,71 @@ async fn setup() -> (RunningServer, RunningServer, Db) {
             .route("/empresas", post(create))
             .route("/empresas/_find", post(find))
             .route("/empresas/{id}", get(read).put(update))
+            .route("/usuarios/{id}", get(user_read))
             .with_state(db.clone()),
     )
     .await;
     let repository = EmpresaRepository::new(&couch.url, "test".into(), "test".into()).unwrap();
+    let usuarios =
+        crate::modules::usuarios::service::UsuarioService::for_test(&couch.url, TEST_SECRET).await;
     let api = serve(
         Router::new()
             .route("/api/health", get(crate::health))
-            .merge(routes::router(EmpresaService::new(Some(repository)))),
+            .merge(routes::router(
+                EmpresaService::new(Some(repository)),
+                usuarios,
+            )),
     )
     .await;
     (api, couch, db)
+}
+
+const TEST_SECRET: &str = "secreto-ficticio-de-pruebas-con-32-caracteres";
+
+async fn user_read(Path(id): Path<String>) -> Reply {
+    let role = match id.as_str() {
+        "pyme" | "otra-pyme" => "pyme",
+        "admin" => "administrador",
+        "inversor" => "inversionista",
+        _ => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error":"not_found","reason":"missing"})),
+            )
+        }
+    };
+    (
+        StatusCode::OK,
+        Json(json!({
+            "_id": id, "_rev":"1-test", "nombre":"Usuario ficticio", "correo":"ficticio@example.test",
+            "password_hash":"hash-no-usado-en-autenticacion", "rol":role, "estado":"activo",
+            "fecha_creacion":"2026-01-01T00:00:00Z", "fecha_actualizacion":"2026-01-01T00:00:00Z"
+        })),
+    )
+}
+
+fn token(id: &str, expired: bool) -> String {
+    let now = chrono::Utc::now().timestamp();
+    let issued = if expired { now - 120 } else { now };
+    jsonwebtoken::encode(
+        &jsonwebtoken::Header::default(),
+        &json!({"sub":id,"iat":issued,"nbf":issued,"exp":if expired { now - 1 } else { now + 3600 },
+            "iss":"credito-backend","aud":"credito-api"}),
+        &jsonwebtoken::EncodingKey::from_secret(TEST_SECRET.as_bytes()),
+    )
+    .unwrap()
+}
+
+fn client_for(id: &str) -> reqwest::Client {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        format!("Bearer {}", token(id, false)).parse().unwrap(),
+    );
+    reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .unwrap()
 }
 
 fn input(nit: &str) -> Value {
@@ -192,9 +261,297 @@ fn input(nit: &str) -> Value {
 }
 
 #[tokio::test]
-async fn complete_lifecycle_and_sequential_duplicates() {
+async fn all_company_routes_require_valid_unexpired_jwt() {
     let (api, _couch, db) = setup().await;
     let client = reqwest::Client::new();
+    for authorization in [
+        None,
+        Some("Bearer invalido".to_owned()),
+        Some(format!("Bearer {}", token("pyme", true))),
+    ] {
+        for (method, path) in [
+            (reqwest::Method::POST, ""),
+            (reqwest::Method::GET, ""),
+            (reqwest::Method::GET, "/empresa-ajena"),
+            (reqwest::Method::PUT, "/empresa-ajena"),
+            (reqwest::Method::PATCH, "/empresa-ajena/desactivar"),
+        ] {
+            let mut request = client
+                .request(method, format!("{}/api/empresas{path}", api.url))
+                .json(&input("JWT-TEST"));
+            if let Some(value) = &authorization {
+                request = request.header("authorization", value);
+            }
+            let response = request.send().await.unwrap();
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            assert_eq!(response.headers()["www-authenticate"], "Bearer");
+        }
+    }
+    assert!(db.lock().unwrap().requests.is_empty());
+}
+
+#[tokio::test]
+async fn ownership_is_assigned_by_server_and_cannot_be_changed_by_client() {
+    let (api, _couch, db) = setup().await;
+    let client = client_for("pyme");
+    let url = format!("{}/api/empresas", api.url);
+    let mut body = input("OWNER-TEST");
+    for owner in [json!("otra-pyme"), Value::Null] {
+        body["usuario_responsable_id"] = owner;
+        assert_eq!(
+            client.post(&url).json(&body).send().await.unwrap().status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
+    let created = client
+        .post(&url)
+        .json(&input("OWNER-TEST"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let created: Value = created.json().await.unwrap();
+    assert_eq!(created["usuario_responsable_id"], "pyme");
+    let id = created["id"].as_str().unwrap();
+    for actor in ["pyme", "admin"] {
+        assert_eq!(
+            client_for(actor)
+                .put(format!("{url}/{id}"))
+                .json(&body)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
+    let updated: Value = client_for("admin")
+        .put(format!("{url}/{id}"))
+        .json(&input("OWNER-TEST"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(updated["usuario_responsable_id"], "pyme");
+    assert_eq!(updated["fecha_creacion"], created["fecha_creacion"]);
+    assert_eq!(db.lock().unwrap().documents[id]["_rev"], "2-test");
+}
+
+#[tokio::test]
+async fn foreign_and_unowned_documents_are_hidden_and_never_written_by_pyme() {
+    let (api, _couch, db) = setup().await;
+    for (id, owner) in [("ajena", json!("otra-pyme")), ("antigua", Value::Null)] {
+        db.lock().unwrap().documents.insert(
+            id.into(),
+            json!({
+                "_id":id,"_rev":"1-test","nombre":"Ficticia","nit":id,
+                "usuario_responsable_id":owner,"estado":"activa"
+            }),
+        );
+    }
+    let before = db.lock().unwrap().documents.clone();
+    let client = client_for("pyme");
+    for id in ["ajena", "antigua", "inexistente"] {
+        let url = format!("{}/api/empresas/{id}", api.url);
+        let get = client.get(&url).send().await.unwrap();
+        assert_eq!(get.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            get.json::<Value>().await.unwrap(),
+            json!({"error":"Empresa inexistente"})
+        );
+        assert_eq!(
+            client
+                .put(&url)
+                .json(&input("UPDATED"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            client
+                .patch(format!("{url}/desactivar"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NOT_FOUND
+        );
+    }
+    assert_eq!(db.lock().unwrap().documents, before);
+    let legacy = format!("{}/api/empresas/antigua", api.url);
+    let admin = client_for("admin");
+    assert_eq!(
+        admin.get(&legacy).send().await.unwrap().status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        admin
+            .put(&legacy)
+            .json(&input("antigua"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        admin
+            .patch(format!("{legacy}/desactivar"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    let db = db.lock().unwrap();
+    assert_eq!(
+        db.documents["antigua"]["usuario_responsable_id"],
+        Value::Null
+    );
+    assert_eq!(db.documents["antigua"]["_rev"], "3-test");
+    assert!(db.documents["antigua"]["fecha_creacion"].is_null());
+    assert_eq!(db.documents["ajena"], before["ajena"]);
+}
+
+#[tokio::test]
+async fn investors_are_denied_all_operations_and_admin_cannot_register() {
+    let (api, _couch, db) = setup().await;
+    let client = client_for("inversor");
+    for (method, path) in [
+        (reqwest::Method::POST, ""),
+        (reqwest::Method::GET, ""),
+        (reqwest::Method::GET, "/ajena"),
+        (reqwest::Method::PUT, "/ajena"),
+        (reqwest::Method::PATCH, "/ajena/desactivar"),
+    ] {
+        assert_eq!(
+            client
+                .request(method, format!("{}/api/empresas{path}", api.url))
+                .json(&input("DENIED"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+    }
+    assert_eq!(
+        client_for("admin")
+            .post(format!("{}/api/empresas", api.url))
+            .json(&input("DENIED"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert!(db.lock().unwrap().requests.is_empty());
+}
+
+#[tokio::test]
+async fn pagination_and_foreign_bookmarks_never_expose_other_owners() {
+    let (api, _couch, db) = setup().await;
+    for (id, owner) in [
+        ("1-ajena", "otra-pyme"),
+        ("2-propia", "pyme"),
+        ("3-ajena", "otra-pyme"),
+        ("4-propia", "pyme"),
+    ] {
+        db.lock().unwrap().documents.insert(id.into(),json!({"_id":id,"_rev":"1-test","nombre":"Ficticia","nit":id,"usuario_responsable_id":owner}));
+    }
+    db.lock().unwrap().documents.insert(
+        "0-antigua".into(),
+        json!({"_id":"0-antigua","_rev":"1-test","nombre":"Antigua","nit":"0"}),
+    );
+    let url = format!("{}/api/empresas", api.url);
+    let client = client_for("pyme");
+    let first: Value = client
+        .get(&url)
+        .query(&[("limit", "1")])
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let second: Value = client
+        .get(&url)
+        .query(&[
+            ("limit", "1"),
+            ("bookmark", first["bookmark"].as_str().unwrap()),
+        ])
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(first["empresas"][0]["id"], "2-propia");
+    assert_eq!(second["empresas"][0]["id"], "4-propia");
+    for actor in ["otra-pyme", "admin"] {
+        let foreign: Value = client_for(actor)
+            .get(&url)
+            .query(&[("limit", "1")])
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let response = client
+            .get(&url)
+            .query(&[
+                ("limit", "1"),
+                ("bookmark", foreign["bookmark"].as_str().unwrap()),
+            ])
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let page: Value = response.json().await.unwrap();
+        assert!(page["empresas"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|d| d["usuario_responsable_id"] == "pyme"));
+    }
+    let all: Value = client_for("admin")
+        .get(&url)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(all["empresas"].as_array().unwrap().len(), 5);
+    assert_eq!(db.lock().unwrap().documents.len(), 5);
+}
+
+#[tokio::test]
+async fn unexpected_foreign_document_from_database_fails_closed() {
+    let (api, _couch, db) = setup().await;
+    {
+        let mut db = db.lock().unwrap();
+        db.ignore_owner = true;
+        db.documents.insert("ajena".into(),json!({"_id":"ajena","_rev":"1-test","nombre":"Privada-secreta","nit":"PRIVADO","usuario_responsable_id":"otra-pyme"}));
+    }
+    let response = client_for("pyme")
+        .get(format!("{}/api/empresas", api.url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    assert!(!response.text().await.unwrap().contains("Privada-secreta"));
+}
+
+#[tokio::test]
+async fn complete_lifecycle_and_sequential_duplicates() {
+    let (api, _couch, db) = setup().await;
+    let client = client_for("pyme");
     let collection = format!("{}/api/empresas", api.url);
     assert_eq!(
         client
@@ -337,7 +694,7 @@ async fn complete_lifecycle_and_sequential_duplicates() {
 #[tokio::test]
 async fn invalid_bodies_states_and_pagination_never_access_database() {
     let (api, _couch, db) = setup().await;
-    let client = reqwest::Client::new();
+    let client = client_for("pyme");
     let url = format!("{}/api/empresas", api.url);
     for (field, value) in [
         ("estado", "activa"),
@@ -419,7 +776,7 @@ async fn invalid_bodies_states_and_pagination_never_access_database() {
 #[tokio::test]
 async fn maps_couchdb_failures_without_exposing_details() {
     let (api, _couch, db) = setup().await;
-    let client = reqwest::Client::new();
+    let client = client_for("pyme");
     for (upstream, expected) in [
         (401, 503),
         (403, 503),
@@ -459,7 +816,7 @@ async fn preserves_existing_test_document_and_state_during_update() {
     db.lock().unwrap().documents.insert("empresa_prueba_001".into(), json!({
         "_id": "empresa_prueba_001", "_rev": "1-test", "nombre": "Prueba ficticia", "nit": "NIT-LEGACY", "estado": "activa"
     }));
-    let client = reqwest::Client::new();
+    let client = client_for("admin");
     let url = format!("{}/api/empresas/empresa_prueba_001", api.url);
     let old: Value = client.get(&url).send().await.unwrap().json().await.unwrap();
     assert_eq!(old["id"], "empresa_prueba_001");
@@ -501,10 +858,13 @@ async fn health_works_without_configuration_and_unreachable_database_returns_503
     let api = serve(
         Router::new()
             .route("/api/health", get(crate::health))
-            .merge(routes::router(EmpresaService::new(None))),
+            .merge(routes::router(
+                EmpresaService::new(None),
+                crate::modules::usuarios::service::UsuarioService::disabled(),
+            )),
     )
     .await;
-    let client = reqwest::Client::new();
+    let client = client_for("pyme");
     assert_eq!(
         client
             .get(format!("{}/api/health", api.url))
@@ -552,7 +912,7 @@ fn rejects_unsafe_or_incomplete_configuration() {
 async fn missing_mango_index_is_distinguished_from_invalid_documents() {
     let (api, _couch, db) = setup().await;
     db.lock().unwrap().missing_index = true;
-    let client = reqwest::Client::new();
+    let client = client_for("pyme");
     let url = format!("{}/api/empresas", api.url);
     let created = client
         .post(&url)
@@ -595,7 +955,9 @@ async fn mango_listing_accepts_missing_or_null_dates_in_legacy_documents() {
         }
         db.lock().unwrap().documents.insert(id.into(), doc);
     }
-    let response = reqwest::get(format!("{}/api/empresas?limit=10", api.url))
+    let response = client_for("admin")
+        .get(format!("{}/api/empresas?limit=10", api.url))
+        .send()
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
@@ -612,7 +974,7 @@ async fn mango_listing_accepts_missing_or_null_dates_in_legacy_documents() {
 #[tokio::test]
 async fn incompatible_mango_documents_are_not_silently_discarded() {
     let (api, _couch, db) = setup().await;
-    let client = reqwest::Client::new();
+    let client = client_for("admin");
     for (field, value) in [
         ("fecha_creacion", json!("secret-invalid-date")),
         ("estado", json!("secret-invalid-state")),
@@ -652,7 +1014,7 @@ async fn real_couchdb_listing_and_legacy_document() {
     let mut total = 0;
     loop {
         let (documents, next) = repository
-            .list(100, bookmark)
+            .list(100, bookmark, None)
             .await
             .expect("Listar Mango con índice por-nit");
         let count = documents.len();
