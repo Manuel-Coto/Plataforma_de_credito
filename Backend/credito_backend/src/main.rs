@@ -55,6 +55,9 @@ async fn build_app(db: Option<&database::connection::CouchDb>) -> Router {
     });
     Router::new()
         .route("/api/health", get(health))
-        .merge(routes::router(EmpresaService::new(repository)))
+        .merge(routes::router(
+            EmpresaService::new(repository),
+            usuarios.clone(),
+        ))
         .merge(usuario_routes::router(usuarios))
 }

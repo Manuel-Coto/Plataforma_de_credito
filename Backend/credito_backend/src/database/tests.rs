@@ -68,8 +68,8 @@ async fn startup_is_idempotent_and_rejects_errors_safely() {
     inicializar_bases(&db).await.unwrap();
     {
         let state = state.lock().unwrap();
-        assert_eq!(state.calls.len(), 16);
-        for chunk in state.calls.chunks(8) {
+        assert_eq!(state.calls.len(), 18);
+        for chunk in state.calls.chunks(9) {
             assert_eq!(
                 chunk[..6].iter().map(|c| c.0.as_str()).collect::<Vec<_>>(),
                 BASES
@@ -80,6 +80,11 @@ async fn startup_is_idempotent_and_rejects_errors_safely() {
                 json!(["nit"])
             );
             assert_eq!(chunk[7].1.as_ref().unwrap()["name"], "por-correo");
+            assert_eq!(chunk[8].1.as_ref().unwrap()["ddoc"], "empresas-responsable");
+            assert_eq!(
+                chunk[8].1.as_ref().unwrap()["index"]["fields"],
+                json!(["usuario_responsable_id", "nit"])
+            );
         }
     }
     for status in [401, 403, 500] {

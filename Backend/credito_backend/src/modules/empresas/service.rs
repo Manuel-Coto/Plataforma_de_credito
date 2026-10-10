@@ -1,3 +1,4 @@
+use crate::modules::usuarios::model::{Rol, Usuario};
 use chrono::Utc;
 
 use super::{
@@ -23,7 +24,14 @@ impl EmpresaService {
         self.repository.as_ref().ok_or(EmpresaError::Configuration)
     }
 
-    pub async fn create(&self, input: EmpresaInput) -> Result<Empresa, EmpresaError> {
+    pub async fn create(
+        &self,
+        user: &Usuario,
+        input: EmpresaInput,
+    ) -> Result<Empresa, EmpresaError> {
+        if user.rol != Rol::Pyme {
+            return Err(EmpresaError::Forbidden);
+        }
         let input = validate(input)?;
         let repository = self.repository()?;
         if repository.nit_exists(&input.nit, None).await? {
@@ -40,7 +48,7 @@ impl EmpresaService {
                 telefono: input.telefono,
                 direccion: input.direccion,
                 estado: EstadoEmpresa::Pendiente,
-                usuario_responsable_id: input.usuario_responsable_id,
+                usuario_responsable_id: Some(user.id.clone()),
                 fecha_creacion: Some(now),
                 fecha_actualizacion: Some(now),
             },
@@ -48,12 +56,20 @@ impl EmpresaService {
         repository.save(document).await?.into_empresa()
     }
 
-    pub async fn get(&self, id: &str) -> Result<Empresa, EmpresaError> {
+    pub async fn get(&self, user: &Usuario, id: &str) -> Result<Empresa, EmpresaError> {
+        require_access_role(user)?;
         validate_id(id)?;
-        self.repository()?.get(id).await?.into_empresa()
+        let document = self.repository()?.get(id).await?;
+        authorize_document(user, &document)?;
+        document.into_empresa()
     }
 
-    pub async fn list(&self, query: ListQuery) -> Result<EmpresaPagina, EmpresaError> {
+    pub async fn list(
+        &self,
+        user: &Usuario,
+        query: ListQuery,
+    ) -> Result<EmpresaPagina, EmpresaError> {
+        require_access_role(user)?;
         let limit = query.limit.unwrap_or(25);
         if !(1..=100).contains(&limit) {
             return Err(EmpresaError::Invalid("limit debe estar entre 1 y 100"));
@@ -61,7 +77,20 @@ impl EmpresaService {
         if query.bookmark.as_ref().is_some_and(|b| b.len() > 8192) {
             return Err(EmpresaError::Invalid("bookmark demasiado largo"));
         }
-        let (documents, bookmark) = self.repository()?.list(limit, query.bookmark).await?;
+        let owner = (user.rol == Rol::Pyme).then_some(user.id.as_str());
+        let (documents, bookmark) = self
+            .repository()?
+            .list(limit, query.bookmark, owner)
+            .await?;
+        for document in &documents {
+            if authorize_document(user, document).is_err() {
+                tracing::error!(
+                    etapa = "autorizacion_listado",
+                    "CouchDB devolvió documentos fuera del responsable solicitado"
+                );
+                return Err(EmpresaError::Upstream);
+            }
+        }
         let empresas = documents
             .into_iter()
             .map(EmpresaDocumento::into_empresa)
@@ -73,11 +102,18 @@ impl EmpresaService {
         })
     }
 
-    pub async fn update(&self, id: &str, input: EmpresaInput) -> Result<Empresa, EmpresaError> {
+    pub async fn update(
+        &self,
+        user: &Usuario,
+        id: &str,
+        input: EmpresaInput,
+    ) -> Result<Empresa, EmpresaError> {
+        require_access_role(user)?;
         validate_id(id)?;
         let input = validate(input)?;
         let repository = self.repository()?;
         let mut document = repository.get(id).await?;
+        authorize_document(user, &document)?;
         if repository.nit_exists(&input.nit, Some(id)).await? {
             return Err(EmpresaError::Duplicate);
         }
@@ -86,21 +122,40 @@ impl EmpresaService {
         document.datos.correo = input.correo;
         document.datos.telefono = input.telefono;
         document.datos.direccion = input.direccion;
-        document.datos.usuario_responsable_id = input.usuario_responsable_id;
         document.datos.fecha_actualizacion = Some(Utc::now());
         repository.save(document).await?.into_empresa()
     }
 
-    pub async fn deactivate(&self, id: &str) -> Result<Empresa, EmpresaError> {
+    pub async fn deactivate(&self, user: &Usuario, id: &str) -> Result<Empresa, EmpresaError> {
+        require_access_role(user)?;
         validate_id(id)?;
         let repository = self.repository()?;
         let mut document = repository.get(id).await?;
+        authorize_document(user, &document)?;
         if document.datos.estado != EstadoEmpresa::Inactiva {
             document.datos.estado = EstadoEmpresa::Inactiva;
             document.datos.fecha_actualizacion = Some(Utc::now());
             document = repository.save(document).await?;
         }
         document.into_empresa()
+    }
+}
+
+fn require_access_role(user: &Usuario) -> Result<(), EmpresaError> {
+    match user.rol {
+        Rol::Pyme | Rol::Administrador => Ok(()),
+        Rol::Inversionista => Err(EmpresaError::Forbidden),
+    }
+}
+
+fn authorize_document(user: &Usuario, document: &EmpresaDocumento) -> Result<(), EmpresaError> {
+    match user.rol {
+        Rol::Administrador => Ok(()),
+        Rol::Pyme if document.datos.usuario_responsable_id.as_deref() == Some(user.id.as_str()) => {
+            Ok(())
+        }
+        Rol::Pyme => Err(EmpresaError::NotFound),
+        Rol::Inversionista => Err(EmpresaError::Forbidden),
     }
 }
 
@@ -124,7 +179,6 @@ fn validate(mut input: EmpresaInput) -> Result<EmpresaInput, EmpresaError> {
     input.correo = input.correo.trim().to_owned();
     input.telefono = input.telefono.trim().to_owned();
     input.direccion = input.direccion.trim().to_owned();
-    input.usuario_responsable_id = input.usuario_responsable_id.map(|id| id.trim().to_owned());
     if input.nombre.is_empty() {
         return Err(EmpresaError::Invalid("El nombre no puede estar vacío"));
     }
@@ -140,14 +194,8 @@ fn validate(mut input: EmpresaInput) -> Result<EmpresaInput, EmpresaError> {
         || input.nit.len() > 64
         || input.telefono.len() > 50
         || input.direccion.len() > 1000
-        || input
-            .usuario_responsable_id
-            .as_ref()
-            .is_some_and(|id| id.is_empty() || id.len() > 512)
     {
-        return Err(EmpresaError::Invalid(
-            "Campos demasiado largos o responsable vacío",
-        ));
+        return Err(EmpresaError::Invalid("Campos demasiado largos"));
     }
     Ok(input)
 }
@@ -195,7 +243,6 @@ mod tests {
             correo: " contacto@example.test ".into(),
             telefono: " 0000-0000 ".into(),
             direccion: " Dirección ficticia ".into(),
-            usuario_responsable_id: None,
         }
     }
 
