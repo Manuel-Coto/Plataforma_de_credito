@@ -1,0 +1,6 @@
+{
+  "index": { "fields": ["nit"] },
+  "ddoc": "empresas-nit",
+  "name": "por-nit",
+  "type": "json"
+}
