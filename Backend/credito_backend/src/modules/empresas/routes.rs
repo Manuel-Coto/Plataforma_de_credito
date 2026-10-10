@@ -30,6 +30,8 @@ pub fn router(service: EmpresaService, usuarios: UsuarioService) -> Router {
         .route("/api/empresas", get(handler::list).post(handler::create))
         .route("/api/empresas/{id}", get(handler::get).put(handler::update))
         .route("/api/empresas/{id}/desactivar", patch(handler::deactivate))
+        .route("/api/empresas/{id}/aprobar", patch(handler::approve))
+        .route("/api/empresas/{id}/rechazar", patch(handler::reject))
         .with_state(EmpresaState {
             empresas: service,
             usuarios,
