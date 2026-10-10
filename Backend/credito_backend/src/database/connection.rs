@@ -1,7 +1,7 @@
 use reqwest::{Client, Url};
 use std::{env, time::Duration};
 
-/// Adaptación del cliente de origin/main. No deriva Debug para proteger secretos.
+// Sin Debug para evitar exponer credenciales.
 pub struct CouchDb {
     pub client: Client,
     pub url: String,

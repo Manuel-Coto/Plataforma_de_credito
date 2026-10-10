@@ -40,7 +40,7 @@ impl UsuarioRepository {
             db.client.clone(),
         )
     }
-    #[allow(dead_code)] // Constructor independiente para pruebas y herramientas.
+    #[allow(dead_code)]
     pub fn from_env() -> Result<Self, UsuarioError> {
         Self::new(
             &env::var("COUCHDB_URL").map_err(|_| UsuarioError::Unavailable)?,

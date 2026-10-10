@@ -132,7 +132,7 @@ where
 
 impl AuthenticatedUser {
     /// Autorización independiente de autenticación; usa el rol actual de CouchDB.
-    #[allow(dead_code)] // Preparado para futuros módulos, sin alterar Empresas.
+    #[allow(dead_code)]
     pub fn require_roles(&self, allowed: &[Rol]) -> Result<(), UsuarioError> {
         if allowed.contains(&self.0.rol) {
             Ok(())

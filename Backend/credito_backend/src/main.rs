@@ -8,7 +8,10 @@ use modules::empresas::{repository::EmpresaRepository, routes, service::EmpresaS
 use modules::usuarios::{routes as usuario_routes, service::UsuarioService};
 
 async fn health() -> Json<Value> {
-    Json(json!({"estado": "activo", "mensaje": "Backend Rust funcionando"}))
+    Json(json!({
+        "estado": "activo",
+        "mensaje": "Backend Rust funcionando"
+    }))
 }
 
 #[tokio::main]

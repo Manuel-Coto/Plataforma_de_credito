@@ -1,4 +1,3 @@
-//! Pruebas HTTP con un doble local de CouchDB: no requieren credenciales ni una BD real.
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex},
@@ -555,7 +554,6 @@ async fn missing_mango_index_is_distinguished_from_invalid_documents() {
     db.lock().unwrap().missing_index = true;
     let client = reqwest::Client::new();
     let url = format!("{}/api/empresas", api.url);
-    // Reproduce el incidente: POST y consulta individual funcionan sin índice de ordenación.
     let created = client
         .post(&url)
         .json(&input("NIT-PRUEBA"))
@@ -578,7 +576,6 @@ async fn missing_mango_index_is_distinguished_from_invalid_documents() {
     let body = response.text().await.unwrap();
     assert!(body.contains("empresas-nit/por-nit"));
     assert!(!body.contains("secret-password"));
-    // Al instalar el índice se recupera el documento, sin fabricar una lista vacía.
     db.lock().unwrap().missing_index = false;
     let response = client.get(format!("{url}?limit=10")).send().await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);

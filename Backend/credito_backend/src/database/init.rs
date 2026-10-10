@@ -34,7 +34,6 @@ impl std::fmt::Display for InitError {
 }
 
 pub async fn inicializar_bases(db: &CouchDb) -> Result<(), InitError> {
-    // Misma lista y semántica del módulo del compañero; no elimina recursos.
     for &base in BASES {
         let response = db
             .client

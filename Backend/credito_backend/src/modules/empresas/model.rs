@@ -11,8 +11,6 @@ pub enum EstadoEmpresa {
     Inactiva,
 }
 
-/// El mismo cuerpo se usa para POST y PUT. PUT reemplaza los datos de contacto.
-/// Campos administrados por el servidor (estado, id, fechas, _rev) se rechazan.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EmpresaInput {
@@ -52,7 +50,6 @@ pub struct Empresa {
     pub datos: EmpresaDatos,
 }
 
-/// Metadatos CouchDB separados de la respuesta pública.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EmpresaDocumento {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]

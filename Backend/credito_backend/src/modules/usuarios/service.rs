@@ -86,7 +86,7 @@ impl UsuarioService {
     pub fn disabled() -> Self {
         Self { inner: None }
     }
-    #[allow(dead_code)] // Se mantiene el constructor previo para uso independiente.
+    #[allow(dead_code)]
     pub async fn from_env() -> Result<Self, UsuarioError> {
         let repository = UsuarioRepository::from_env()?;
         Self::configured(repository).await

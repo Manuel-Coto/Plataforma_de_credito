@@ -38,7 +38,7 @@ impl EmpresaRepository {
             db.client.clone(),
         )
     }
-    #[allow(dead_code)] // Constructor independiente para pruebas y herramientas.
+    #[allow(dead_code)]
     pub fn from_env() -> Result<Self, EmpresaError> {
         let url = env::var("COUCHDB_URL").map_err(|_| EmpresaError::Configuration)?;
         let username = env::var("COUCHDB_USERNAME").map_err(|_| EmpresaError::Configuration)?;
