@@ -26,10 +26,7 @@ impl FromRef<InversionState> for UsuarioService {
     }
 }
 
-pub fn router(
-    inversiones: InversionService,
-    usuarios: UsuarioService,
-) -> Router {
+pub fn router(inversiones: InversionService, usuarios: UsuarioService) -> Router {
     Router::new()
         .route(
             "/api/ofertas",

@@ -4,8 +4,8 @@ use crate::modules::usuarios::model::{Rol, Usuario};
 
 use super::{
     model::{
-        CrearInversion, CrearOferta, EstadoInversion, EstadoOferta,
-        Inversion, InversionPagina, ListarOfertas, Oferta, OfertaPagina,
+        CrearInversion, CrearOferta, EstadoInversion, EstadoOferta, Inversion, InversionPagina,
+        ListarOfertas, Oferta, OfertaPagina,
     },
     repository::InversionRepository,
     InversionError,
@@ -22,15 +22,10 @@ impl InversionService {
     }
 
     fn repo(&self) -> Result<&InversionRepository, InversionError> {
-        self.repository
-            .as_ref()
-            .ok_or(InversionError::Unavailable)
+        self.repository.as_ref().ok_or(InversionError::Unavailable)
     }
 
-    fn require_role(
-        user: &Usuario,
-        allowed: &[Rol],
-    ) -> Result<(), InversionError> {
+    fn require_role(user: &Usuario, allowed: &[Rol]) -> Result<(), InversionError> {
         if allowed.contains(&user.rol) {
             Ok(())
         } else {
@@ -46,14 +41,10 @@ impl InversionService {
         Self::require_role(user, &[Rol::Pyme, Rol::Administrador])?;
 
         if input.factura_id.trim().is_empty() {
-            return Err(InversionError::Invalid(
-                "La factura es obligatoria",
-            ));
+            return Err(InversionError::Invalid("La factura es obligatoria"));
         }
 
-        if !input.monto_objetivo.is_finite()
-            || input.monto_objetivo <= 0.0
-        {
+        if !input.monto_objetivo.is_finite() || input.monto_objetivo <= 0.0 {
             return Err(InversionError::Invalid(
                 "El monto objetivo debe ser mayor que cero",
             ));
@@ -86,9 +77,7 @@ impl InversionService {
 
         let creador_factura = factura["creado_por"].as_str().unwrap_or("");
 
-        if user.rol != Rol::Administrador
-            && creador_factura != user.id
-        {
+        if user.rol != Rol::Administrador && creador_factura != user.id {
             return Err(InversionError::Forbidden);
         }
 
@@ -110,10 +99,7 @@ impl InversionService {
         }
 
         let oferta = Oferta {
-            id: format!(
-                "oferta-{}",
-                ahora.timestamp_nanos_opt().unwrap_or_default()
-            ),
+            id: format!("oferta-{}", ahora.timestamp_nanos_opt().unwrap_or_default()),
             revision: None,
             tipo: "oferta".to_string(),
             factura_id: input.factura_id.trim().to_string(),
@@ -158,9 +144,7 @@ impl InversionService {
         Self::require_role(user, &[Rol::Inversionista])?;
 
         if input.oferta_id.trim().is_empty() {
-            return Err(InversionError::Invalid(
-                "La oferta es obligatoria",
-            ));
+            return Err(InversionError::Invalid("La oferta es obligatoria"));
         }
 
         if !input.monto.is_finite() || input.monto <= 0.0 {
@@ -175,9 +159,7 @@ impl InversionService {
 
         let mut oferta = repo.get_oferta(input.oferta_id.trim()).await?;
 
-        if oferta.estado != EstadoOferta::Abierta
-            || oferta.fecha_cierre <= ahora
-        {
+        if oferta.estado != EstadoOferta::Abierta || oferta.fecha_cierre <= ahora {
             return Err(InversionError::Conflict);
         }
 
@@ -231,10 +213,7 @@ impl InversionService {
         limit: Option<u32>,
         bookmark: Option<String>,
     ) -> Result<InversionPagina, InversionError> {
-        Self::require_role(
-            user,
-            &[Rol::Inversionista, Rol::Administrador],
-        )?;
+        Self::require_role(user, &[Rol::Inversionista, Rol::Administrador])?;
 
         let limit = limit.unwrap_or(20).clamp(1, 100);
 

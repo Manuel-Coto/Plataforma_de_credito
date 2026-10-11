@@ -4,11 +4,7 @@ pub mod repository;
 pub mod routes;
 pub mod service;
 
-use axum::{
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde_json::json;
 
 #[derive(Debug)]
@@ -25,14 +21,8 @@ pub enum InversionError {
 impl IntoResponse for InversionError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match self {
-            Self::Invalid(message) => (
-                StatusCode::BAD_REQUEST,
-                message,
-            ),
-            Self::Forbidden => (
-                StatusCode::FORBIDDEN,
-                "Permisos insuficientes",
-            ),
+            Self::Invalid(message) => (StatusCode::BAD_REQUEST, message),
+            Self::Forbidden => (StatusCode::FORBIDDEN, "Permisos insuficientes"),
             Self::NotFound => (
                 StatusCode::NOT_FOUND,
                 "Oferta, inversión o factura inexistente",

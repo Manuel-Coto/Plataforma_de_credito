@@ -5,25 +5,12 @@ mod database;
 mod modules;
 
 use modules::{
-    empresas::{
-        repository::EmpresaRepository,
-        routes as empresa_routes,
-        service::EmpresaService,
-    },
-    facturas::{
-        repository::FacturaRepository,
-        routes as factura_routes,
-        service::FacturaService,
-    },
+    empresas::{repository::EmpresaRepository, routes as empresa_routes, service::EmpresaService},
+    facturas::{repository::FacturaRepository, routes as factura_routes, service::FacturaService},
     inversiones::{
-        repository::InversionRepository,
-        routes as inversion_routes,
-        service::InversionService,
+        repository::InversionRepository, routes as inversion_routes, service::InversionService,
     },
-    usuarios::{
-        routes as usuario_routes,
-        service::UsuarioService,
-    },
+    usuarios::{routes as usuario_routes, service::UsuarioService},
 };
 
 async fn health() -> Json<Value> {
@@ -41,18 +28,14 @@ async fn main() {
     let db = database::connection::CouchDb::new().ok();
 
     if let Some(db) = &db {
-        if let Err(error) =
-            database::init::inicializar_bases(db).await
-        {
+        if let Err(error) = database::init::inicializar_bases(db).await {
             tracing::warn!(
                 %error,
                 "Inicialización CouchDB incompleta"
             );
         }
     } else {
-        tracing::warn!(
-            "Configuración CouchDB inválida o incompleta"
-        );
+        tracing::warn!("Configuración CouchDB inválida o incompleta");
     }
 
     let app = build_app(db.as_ref()).await;
@@ -63,24 +46,18 @@ async fn main() {
 
     println!("API en http://127.0.0.1:3000");
 
-    axum::serve(listener, app)
-        .await
-        .expect("Fallo de servidor");
+    axum::serve(listener, app).await.expect("Fallo de servidor");
 }
 
-async fn build_app(
-    db: Option<&database::connection::CouchDb>,
-) -> Router {
+async fn build_app(db: Option<&database::connection::CouchDb>) -> Router {
     let usuarios = match db {
         Some(db) => UsuarioService::from_connection(db).await,
         None => Ok(UsuarioService::disabled()),
     }
-        .unwrap_or_else(|_| {
-            tracing::warn!(
-            "Usuarios no configurado; revisar CouchDB y JWT_SECRET"
-        );
-            UsuarioService::disabled()
-        });
+    .unwrap_or_else(|_| {
+        tracing::warn!("Usuarios no configurado; revisar CouchDB y JWT_SECRET");
+        UsuarioService::disabled()
+    });
 
     let empresas_repo = db
         .map(EmpresaRepository::from_connection)

@@ -7,8 +7,8 @@ use crate::modules::{
 
 use super::{
     model::{
-        CrearFactura, DatosDte, EstadoFactura, Factura, FacturaDocumento,
-        FacturaPagina, ListQuery, VerificarDte,
+        CrearFactura, DatosDte, EstadoFactura, Factura, FacturaDocumento, FacturaPagina, ListQuery,
+        VerificarDte,
     },
     repository::FacturaRepository,
     FacturaError,
@@ -25,9 +25,7 @@ impl FacturaService {
     }
 
     fn repo(&self) -> Result<&FacturaRepository, FacturaError> {
-        self.repository
-            .as_ref()
-            .ok_or(FacturaError::Unavailable)
+        self.repository.as_ref().ok_or(FacturaError::Unavailable)
     }
 
     fn require_role(user: &Usuario, allowed: &[Rol]) -> Result<(), FacturaError> {
@@ -46,7 +44,7 @@ impl FacturaService {
         Self::is_admin(user)
             || factura.creado_por == user.id
             || (user.rol == Rol::Inversionista
-            && matches!(
+                && matches!(
                     factura.estado,
                     EstadoFactura::Disponible
                         | EstadoFactura::ParcialmenteFinanciada
@@ -154,11 +152,7 @@ impl FacturaService {
         })
     }
 
-    pub async fn get(
-        &self,
-        user: &Usuario,
-        id: &str,
-    ) -> Result<Factura, FacturaError> {
+    pub async fn get(&self, user: &Usuario, id: &str) -> Result<Factura, FacturaError> {
         let documento = self.repo()?.get(id).await?;
 
         if !Self::puede_ver(user, &documento) {
@@ -189,8 +183,7 @@ impl FacturaService {
             return Err(FacturaError::Conflict);
         }
 
-        factura.dte.sello_recepcion =
-            Some(input.sello_recepcion.trim().to_string());
+        factura.dte.sello_recepcion = Some(input.sello_recepcion.trim().to_string());
         factura.dte.verificado = true;
         factura.dte.fecha_verificacion = Some(Utc::now());
         factura.estado = EstadoFactura::Disponible;

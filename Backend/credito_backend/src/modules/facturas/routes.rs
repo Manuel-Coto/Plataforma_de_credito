@@ -26,25 +26,13 @@ impl FromRef<FacturaState> for UsuarioService {
     }
 }
 
-pub fn router(
-    facturas: FacturaService,
-    usuarios: UsuarioService,
-) -> Router {
+pub fn router(facturas: FacturaService, usuarios: UsuarioService) -> Router {
     Router::new()
-        .route(
-            "/api/facturas",
-            post(handler::create).get(handler::list),
-        )
-        .route(
-            "/api/facturas/{id}",
-            get(handler::get),
-        )
+        .route("/api/facturas", post(handler::create).get(handler::list))
+        .route("/api/facturas/{id}", get(handler::get))
         .route(
             "/api/facturas/{id}/verificar-dte",
             patch(handler::verify_dte),
         )
-        .with_state(FacturaState {
-            facturas,
-            usuarios,
-        })
+        .with_state(FacturaState { facturas, usuarios })
 }

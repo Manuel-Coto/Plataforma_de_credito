@@ -1,7 +1,46 @@
-use axum::{extract::{rejection::{JsonRejection, QueryRejection}, Path, Query, State}, http::StatusCode, Json};
+use super::{
+    model::{CrearFactura, Factura, FacturaPagina, ListQuery, VerificarDte},
+    service::FacturaService,
+    FacturaError,
+};
 use crate::modules::usuarios::auth::AuthenticatedUser;
-use super::{model::{CrearFactura, Factura, FacturaPagina, ListQuery, VerificarDte}, service::FacturaService, FacturaError};
-pub async fn create(State(s): State<FacturaService>, user: AuthenticatedUser, body: Result<Json<CrearFactura>, JsonRejection>) -> Result<(StatusCode, Json<Factura>), FacturaError> { let Json(input)=body.map_err(|_| FacturaError::Invalid("JSON de factura inválido"))?; Ok((StatusCode::CREATED, Json(s.create(&user.0,input).await?))) }
-pub async fn list(State(s): State<FacturaService>, user: AuthenticatedUser, query: Result<Query<ListQuery>, QueryRejection>) -> Result<Json<FacturaPagina>, FacturaError> { let Query(q)=query.map_err(|_| FacturaError::Invalid("Parámetros de consulta inválidos"))?; Ok(Json(s.list(&user.0,q).await?)) }
-pub async fn get(State(s): State<FacturaService>, user: AuthenticatedUser, Path(id): Path<String>) -> Result<Json<Factura>, FacturaError> { Ok(Json(s.get(&user.0,&id).await?)) }
-pub async fn verify_dte(State(s): State<FacturaService>, user: AuthenticatedUser, Path(id): Path<String>, body: Result<Json<VerificarDte>, JsonRejection>) -> Result<Json<Factura>, FacturaError> { let Json(input)=body.map_err(|_| FacturaError::Invalid("JSON de verificación inválido"))?; Ok(Json(s.verify_dte(&user.0,&id,input).await?)) }
+use axum::{
+    extract::{
+        rejection::{JsonRejection, QueryRejection},
+        Path, Query, State,
+    },
+    http::StatusCode,
+    Json,
+};
+pub async fn create(
+    State(s): State<FacturaService>,
+    user: AuthenticatedUser,
+    body: Result<Json<CrearFactura>, JsonRejection>,
+) -> Result<(StatusCode, Json<Factura>), FacturaError> {
+    let Json(input) = body.map_err(|_| FacturaError::Invalid("JSON de factura inválido"))?;
+    Ok((StatusCode::CREATED, Json(s.create(&user.0, input).await?)))
+}
+pub async fn list(
+    State(s): State<FacturaService>,
+    user: AuthenticatedUser,
+    query: Result<Query<ListQuery>, QueryRejection>,
+) -> Result<Json<FacturaPagina>, FacturaError> {
+    let Query(q) = query.map_err(|_| FacturaError::Invalid("Parámetros de consulta inválidos"))?;
+    Ok(Json(s.list(&user.0, q).await?))
+}
+pub async fn get(
+    State(s): State<FacturaService>,
+    user: AuthenticatedUser,
+    Path(id): Path<String>,
+) -> Result<Json<Factura>, FacturaError> {
+    Ok(Json(s.get(&user.0, &id).await?))
+}
+pub async fn verify_dte(
+    State(s): State<FacturaService>,
+    user: AuthenticatedUser,
+    Path(id): Path<String>,
+    body: Result<Json<VerificarDte>, JsonRejection>,
+) -> Result<Json<Factura>, FacturaError> {
+    let Json(input) = body.map_err(|_| FacturaError::Invalid("JSON de verificación inválido"))?;
+    Ok(Json(s.verify_dte(&user.0, &id, input).await?))
+}
