@@ -1,0 +1,8 @@
+{
+  "index": {
+    "fields": ["tipo", "responsable_id", "estado"]
+  },
+  "ddoc": "creditos-responsable",
+  "name": "creditos-por-responsable",
+  "type": "json"
+}

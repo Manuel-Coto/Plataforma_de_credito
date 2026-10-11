@@ -64,17 +64,22 @@ async fn startup_is_idempotent_and_rejects_errors_safely() {
     let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let db = CouchDb::from_parts(url, "test".into(), "test".into()).unwrap();
     inicializar_bases(&db).await.unwrap();
+    let first_calls = state.lock().unwrap().calls.clone();
     state.lock().unwrap().existing = true;
     inicializar_bases(&db).await.unwrap();
     {
         let state = state.lock().unwrap();
-        assert_eq!(state.calls.len(), 36);
-        for chunk in state.calls.chunks(18) {
+        assert_eq!(state.calls.len(), first_calls.len() * 2);
+        assert_eq!(&state.calls[first_calls.len()..], first_calls.as_slice());
+        for chunk in state.calls.chunks(first_calls.len()) {
             assert_eq!(
-                chunk[..6].iter().map(|c| c.0.as_str()).collect::<Vec<_>>(),
+                chunk[..BASES.len()]
+                    .iter()
+                    .map(|c| c.0.as_str())
+                    .collect::<Vec<_>>(),
                 BASES
             );
-            let indices: Vec<&Value> = chunk[6..]
+            let indices: Vec<&Value> = chunk[BASES.len()..]
                 .iter()
                 .map(|call| call.1.as_ref().unwrap())
                 .collect();
@@ -91,6 +96,41 @@ async fn startup_is_idempotent_and_rejects_errors_safely() {
                 index["ddoc"] == "empresas-responsable"
                     && index["index"]["fields"] == json!(["usuario_responsable_id", "nit"])
             }));
+
+            for (base, name, fields) in [
+                (
+                    "operaciones",
+                    "creditos-por-responsable",
+                    json!(["tipo", "responsable_id", "estado"]),
+                ),
+                (
+                    "operaciones",
+                    "creditos-por-estado",
+                    json!(["tipo", "estado"]),
+                ),
+                ("auditoria", "auditoria-por-fecha", json!(["tipo", "fecha"])),
+                (
+                    "auditoria",
+                    "auditoria-por-actor",
+                    json!(["tipo", "actor_id"]),
+                ),
+                (
+                    "auditoria",
+                    "auditoria-por-recurso",
+                    json!(["tipo", "recurso_id"]),
+                ),
+            ] {
+                assert!(
+                    chunk.iter().any(|(called_base, definition)| {
+                        called_base == base
+                            && definition.as_ref().is_some_and(|definition| {
+                                definition["name"] == name
+                                    && definition["index"]["fields"] == fields
+                            })
+                    }),
+                    "Falta el índice {name} en {base}"
+                );
+            }
         }
     }
     for status in [401, 403, 500] {
@@ -109,12 +149,57 @@ async fn startup_is_idempotent_and_rejects_errors_safely() {
 }
 
 #[tokio::test]
-async fn health_survives_missing_configuration() {
+async fn health_survives_missing_configuration_and_new_routes_require_authentication() {
     let app = crate::build_app(None).await;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let url = format!("http://{}/api/health", listener.local_addr().unwrap());
+    let url = format!("http://{}", listener.local_addr().unwrap());
     let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    assert_eq!(reqwest::get(url).await.unwrap().status(), StatusCode::OK);
+    let client = reqwest::Client::new();
+    assert_eq!(
+        client
+            .get(format!("{url}/api/health"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    for path in [
+        "/api/creditos",
+        "/api/creditos/credito:ejemplo",
+        "/api/administracion/resumen",
+        "/api/administracion/reportes?modulo=creditos",
+        "/api/administracion/auditoria",
+    ] {
+        assert_eq!(
+            client
+                .get(format!("{url}{path}"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED,
+            "La ruta GET {path} debe estar conectada y protegida"
+        );
+    }
+    for path in [
+        "/api/creditos",
+        "/api/creditos/aportes/inversion:ejemplo/confirmar",
+        "/api/creditos/credito:ejemplo/pagos",
+        "/api/creditos/credito:ejemplo/sincronizar",
+    ] {
+        assert_eq!(
+            client
+                .post(format!("{url}{path}"))
+                .json(&json!({}))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED,
+            "La ruta POST {path} debe estar conectada y protegida"
+        );
+    }
     task.abort();
 }
 

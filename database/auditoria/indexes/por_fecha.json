@@ -1,0 +1,8 @@
+{
+  "index": {
+    "fields": ["tipo", "fecha"]
+  },
+  "ddoc": "auditoria-fecha",
+  "name": "auditoria-por-fecha",
+  "type": "json"
+}

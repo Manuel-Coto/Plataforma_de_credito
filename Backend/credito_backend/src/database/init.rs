@@ -62,7 +62,7 @@ pub async fn inicializar_bases(db: &CouchDb) -> Result<(), InitError> {
 }
 
 pub async fn inicializar_indices(db: &CouchDb) -> Result<(), InitError> {
-    let definitions: [(&str, &str); 12] = [
+    let definitions: &[(&str, &str)] = &[
         (
             "empresas",
             include_str!("../../../../database/empresas/indexes/por_nit.json"),
@@ -111,9 +111,29 @@ pub async fn inicializar_indices(db: &CouchDb) -> Result<(), InitError> {
             "operaciones",
             include_str!("../../../../database/operaciones/indexes/por_oferta.json"),
         ),
+        (
+            "operaciones",
+            include_str!("../../../../database/operaciones/indexes/creditos_por_responsable.json"),
+        ),
+        (
+            "operaciones",
+            include_str!("../../../../database/operaciones/indexes/creditos_por_estado.json"),
+        ),
+        (
+            "auditoria",
+            include_str!("../../../../database/auditoria/indexes/por_fecha.json"),
+        ),
+        (
+            "auditoria",
+            include_str!("../../../../database/auditoria/indexes/por_actor.json"),
+        ),
+        (
+            "auditoria",
+            include_str!("../../../../database/auditoria/indexes/por_recurso.json"),
+        ),
     ];
 
-    for (base, source) in definitions {
+    for &(base, source) in definitions {
         let definition: Value =
             serde_json::from_str(source).map_err(|_| InitError::InvalidIndex { base })?;
 

@@ -1,9 +1,6 @@
 use chrono::Utc;
 
-use crate::modules::{
-    empresas::model::EstadoEmpresa,
-    usuarios::model::{Rol, Usuario},
-};
+use crate::modules::usuarios::model::{Rol, Usuario};
 
 use super::{
     model::{

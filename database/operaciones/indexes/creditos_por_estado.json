@@ -1,0 +1,8 @@
+{
+  "index": {
+    "fields": ["tipo", "estado"]
+  },
+  "ddoc": "creditos-estado",
+  "name": "creditos-por-estado",
+  "type": "json"
+}

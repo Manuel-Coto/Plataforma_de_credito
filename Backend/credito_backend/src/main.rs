@@ -5,6 +5,11 @@ mod database;
 mod modules;
 
 use modules::{
+    administracion::{
+        repository::AdministracionRepository, routes as administracion_routes,
+        service::AdministracionService,
+    },
+    creditos::{repository::CreditoRepository, routes as credito_routes, service::CreditoService},
     empresas::{repository::EmpresaRepository, routes as empresa_routes, service::EmpresaService},
     facturas::{repository::FacturaRepository, routes as factura_routes, service::FacturaService},
     inversiones::{
@@ -83,6 +88,22 @@ async fn build_app(db: Option<&database::connection::CouchDb>) -> Router {
             None
         });
 
+    let creditos_repo = db
+        .map(CreditoRepository::from_connection)
+        .transpose()
+        .unwrap_or_else(|_| {
+            tracing::warn!("Repositorio de créditos no disponible");
+            None
+        });
+
+    let administracion_repo = db
+        .map(AdministracionRepository::from_connection)
+        .transpose()
+        .unwrap_or_else(|_| {
+            tracing::warn!("Repositorio de administración no disponible");
+            None
+        });
+
     Router::new()
         .route("/api/health", get(health))
         .merge(empresa_routes::router(
@@ -96,6 +117,14 @@ async fn build_app(db: Option<&database::connection::CouchDb>) -> Router {
         ))
         .merge(inversion_routes::router(
             InversionService::new(inversiones_repo),
+            usuarios.clone(),
+        ))
+        .merge(credito_routes::router(
+            CreditoService::new(creditos_repo),
+            usuarios.clone(),
+        ))
+        .merge(administracion_routes::router(
+            AdministracionService::new(administracion_repo),
             usuarios,
         ))
 }

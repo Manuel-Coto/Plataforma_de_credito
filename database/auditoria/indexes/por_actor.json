@@ -1,0 +1,8 @@
+{
+  "index": {
+    "fields": ["tipo", "actor_id"]
+  },
+  "ddoc": "auditoria-actor",
+  "name": "auditoria-por-actor",
+  "type": "json"
+}

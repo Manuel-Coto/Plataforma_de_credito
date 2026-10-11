@@ -1,0 +1,8 @@
+{
+  "index": {
+    "fields": ["tipo", "recurso_id"]
+  },
+  "ddoc": "auditoria-recurso",
+  "name": "auditoria-por-recurso",
+  "type": "json"
+}

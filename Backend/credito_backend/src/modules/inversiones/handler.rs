@@ -1,7 +1,7 @@
 use axum::{
     extract::{
         rejection::{JsonRejection, QueryRejection},
-        Path, Query, State,
+        Query, State,
     },
     http::StatusCode,
     Json,
@@ -68,26 +68,3 @@ pub async fn listar_mis_inversiones(
     ))
 }
 
-pub async fn obtener_oferta(
-    State(service): State<InversionService>,
-    user: AuthenticatedUser,
-    Path(id): Path<String>,
-) -> Result<Json<Oferta>, InversionError> {
-    // La ruta devuelve ofertas a usuarios autenticados.
-    // La validación de permisos y disponibilidad para invertir
-    // se vuelve a realizar al ejecutar la operación de inversión.
-    let query = ListarOfertas {
-        limit: Some(100),
-        bookmark: None,
-        estado: None,
-    };
-
-    let pagina = service.listar_ofertas(&user.0, query).await?;
-
-    pagina
-        .ofertas
-        .into_iter()
-        .find(|oferta| oferta.id == id)
-        .map(Json)
-        .ok_or(InversionError::NotFound)
-}
