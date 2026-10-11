@@ -67,4 +67,3 @@ pub async fn listar_mis_inversiones(
             .await?,
     ))
 }
-

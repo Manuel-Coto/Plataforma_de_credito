@@ -1,8 +1,4 @@
-use axum::{
-    extract::FromRef,
-    routing::post,
-    Router,
-};
+use axum::{extract::FromRef, routing::post, Router};
 
 use crate::modules::usuarios::service::UsuarioService;
 

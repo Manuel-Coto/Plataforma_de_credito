@@ -34,9 +34,9 @@ async fn main() {
         Ok(db) => Some(db),
         Err(error) => {
             tracing::warn!(
-            error = %error,
-            "No se pudo configurar CouchDB"
-        );
+                error = %error,
+                "No se pudo configurar CouchDB"
+            );
             None
         }
     };
