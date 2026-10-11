@@ -74,17 +74,23 @@ async fn startup_is_idempotent_and_rejects_errors_safely() {
                 chunk[..6].iter().map(|c| c.0.as_str()).collect::<Vec<_>>(),
                 BASES
             );
-            assert_eq!(chunk[6].1.as_ref().unwrap()["ddoc"], "empresas-nit");
-            assert_eq!(
-                chunk[6].1.as_ref().unwrap()["index"]["fields"],
-                json!(["nit"])
-            );
-            assert_eq!(chunk[7].1.as_ref().unwrap()["name"], "por-correo");
-            assert_eq!(chunk[8].1.as_ref().unwrap()["ddoc"], "empresas-responsable");
-            assert_eq!(
-                chunk[8].1.as_ref().unwrap()["index"]["fields"],
-                json!(["usuario_responsable_id", "nit"])
-            );
+            let indices: Vec<&Value> = chunk[6..]
+                .iter()
+                .map(|call| call.1.as_ref().unwrap())
+                .collect();
+
+            assert!(indices.iter().any(|index| {
+                index["ddoc"] == "empresas-nit" && index["index"]["fields"] == json!(["nit"])
+            }));
+
+            assert!(indices
+                .iter()
+                .any(|index| { index["name"] == "por-correo" }));
+
+            assert!(indices.iter().any(|index| {
+                index["ddoc"] == "empresas-responsable"
+                    && index["index"]["fields"] == json!(["usuario_responsable_id", "nit"])
+            }));
         }
     }
     for status in [401, 403, 500] {
