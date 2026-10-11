@@ -25,7 +25,16 @@ async fn main() {
     dotenvy::dotenv().ok();
     tracing_subscriber::fmt::init();
 
-    let db = database::connection::CouchDb::new().ok();
+    let db = match database::connection::CouchDb::new() {
+        Ok(db) => Some(db),
+        Err(error) => {
+            tracing::warn!(
+            error = %error,
+            "No se pudo configurar CouchDB"
+        );
+            None
+        }
+    };
 
     if let Some(db) = &db {
         if let Err(error) = database::init::inicializar_bases(db).await {
