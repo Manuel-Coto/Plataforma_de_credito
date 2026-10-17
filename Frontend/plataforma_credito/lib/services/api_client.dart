@@ -38,8 +38,8 @@ class ApiClient {
   Future<dynamic> _enviar(Future<http.Response> Function() peticion) async {
     try {
       return _procesar(await peticion());
-    } on http.ClientException {
-      throw const ApiException(0, 'No se pudo conectar con el servidor');
+    } on http.ClientException catch (e) {
+      throw ApiException(0, 'No se pudo conectar con el servidor: ${e.message}');
     }
   }
 
