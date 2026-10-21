@@ -38,7 +38,7 @@ class FacturasProvider extends ChangeNotifier {
       _estadoCarga = EstadoCarga.listo;
     } on ApiException catch (e) {
       // Error conocido: lo devolvió el backend o no hubo conexión.
-      _mensajeError = e.mensaje;
+      _mensajeError = e.message;
       _estadoCarga = EstadoCarga.error;
     } catch (_) {
       // Cualquier otra cosa (por ejemplo, una respuesta con formato

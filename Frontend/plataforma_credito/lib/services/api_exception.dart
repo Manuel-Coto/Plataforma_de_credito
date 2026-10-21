@@ -1,8 +1,11 @@
-class ApiException implements Exception{
-  const ApiException (this.statusCode, this.mensaje);
-  final int statusCode;
-  final String mensaje;
+/// Error devuelto por el backend o por la conexión.
+/// [status] es null cuando no hubo respuesta del servidor.
+class ApiException implements Exception {
+  ApiException(this.message, [this.status]);
+
+  final String message;
+  final int? status;
 
   @override
-  String toString() => 'ApiException($statusCode): $mensaje';
+  String toString() => message;
 }
