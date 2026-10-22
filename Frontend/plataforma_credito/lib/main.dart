@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'modules/empresas/screens/empresa_form_screen.dart';
 import 'modules/facturas/providers/facturas_provider.dart';
-import 'modules/facturas/screens/factura_lista_screen.dart';
+import 'modules/facturas/screens/facturas_lista_screen.dart';
 import 'modules/usuarios/screens/registro_usuario_screen.dart';
 import 'services/api_client.dart';
 import 'services/factura_service.dart';
