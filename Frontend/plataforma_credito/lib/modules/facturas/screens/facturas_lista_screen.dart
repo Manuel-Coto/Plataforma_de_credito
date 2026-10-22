@@ -33,21 +33,32 @@ class _FacturasListaScreenState extends State<FacturasListaScreen> {
     // este build se ejecuta de nuevo y la pantalla se actualiza sola.
     final provider = context.watch<FacturasProvider>();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Facturas'),
-        actions: [
-          IconButton(
-            tooltip: 'Actualizar',
-            icon: const Icon(Icons.refresh),
-            // null deshabilita el botón mientras ya está cargando.
-            onPressed: provider.estadoCarga == EstadoCarga.cargando
-                ? null
-                : provider.cargar,
+    return Column(
+      children: [
+        // Encabezado propio: título a la izquierda, botón a la derecha.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
+          child: Row(
+            children: [
+              Text(
+                'Facturas',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Actualizar',
+                icon: const Icon(Icons.refresh),
+                // null deshabilita el botón mientras ya está cargando.
+                onPressed: provider.estadoCarga == EstadoCarga.cargando
+                    ? null
+                    : provider.cargar,
+              ),
+            ],
           ),
-        ],
-      ),
-      body: _contenido(provider),
+        ),
+        // Expanded: el contenido ocupa todo el alto que queda debajo.
+        Expanded(child: _contenido(provider)),
+      ],
     );
   }
 
