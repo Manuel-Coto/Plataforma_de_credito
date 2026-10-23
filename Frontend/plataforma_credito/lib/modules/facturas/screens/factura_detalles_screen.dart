@@ -63,6 +63,28 @@ class FacturaDetalleScreen extends StatelessWidget{
               ),
             ],
           ),
+          SeccionCard(
+            titulo: 'Documento tributario (DTE)',
+            children: [
+              FilaDato(
+                etiqueta: 'Código de generación',
+                valor: factura.dte.codigoGeneracion,
+              ),
+              FilaDato(
+                etiqueta: 'Verificado',
+                valor: factura.dte.verificado ? 'Sí' : 'No',
+              ),
+              FilaDato(
+                etiqueta: 'Sello de recepción',
+                valor: factura.dte.selloRecepcion ?? 'Pendiente',
+              ),
+              if (factura.dte.fechaVerificacion != null)
+                FilaDato(
+                  etiqueta: 'Fecha de verificación',
+                  valor: Formato.fecha(factura.dte.fechaVerificacion!),
+                ),
+            ],
+          ),
         ],
       ),
     );
