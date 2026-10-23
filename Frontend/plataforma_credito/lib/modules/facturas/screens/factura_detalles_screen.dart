@@ -3,6 +3,7 @@ import '../../../models/factura.dart';
 import '../../../widgets/fila_dato.dart';
 import '../../../core/utils/formato.dart';
 import '../../../widgets/seccion_card.dart';
+import '../widgets/filtro_estados.dart';
 
 class FacturaDetalleScreen extends StatelessWidget{
   const FacturaDetalleScreen({super.key, required this.factura});

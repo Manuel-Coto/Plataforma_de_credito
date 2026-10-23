@@ -5,6 +5,7 @@ import '../../../core/estado_carga.dart';
 import '../../../widgets/vista_error.dart';
 import '../providers/facturas_provider.dart';
 import '../widgets/factura_card.dart';
+import '../widgets/filtro_estados.dart';
 
 // StatefulWidget, necesita ejecutar algo UNA vez al abrirse:
 class FacturasListaScreen extends StatefulWidget {
@@ -52,6 +53,12 @@ class _FacturasListaScreenState extends State<FacturasListaScreen> {
             ],
           ),
         ),
+        const SizedBox(height: 8),
+        FiltroEstados(
+          seleccionado: provider.filtro,
+          onCambio: provider.filtrarPor,
+        ),
+        const SizedBox(height: 8),
         // Expanded: el contenido ocupa todo el alto que queda debajo.
         Expanded(child: _contenido(provider)),
       ],
