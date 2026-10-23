@@ -6,7 +6,7 @@ import '../../../widgets/vista_error.dart';
 import '../providers/facturas_provider.dart';
 import '../widgets/factura_card.dart';
 
-// StatefulWidget porque necesita ejecutar algo UNA vez al abrirse:
+// StatefulWidget, necesita ejecutar algo UNA vez al abrirse:
 class FacturasListaScreen extends StatefulWidget {
   const FacturasListaScreen({super.key});
 
@@ -18,19 +18,15 @@ class _FacturasListaScreenState extends State<FacturasListaScreen> {
   @override
   void initState() {
     super.initState();
-    // Se espera a que termine de dibujarse el primer cuadro; así el provider
-    // no avisa de cambios en medio de un dibujado.
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      // read: lee el provider UNA vez, sin suscribirse a sus cambios.
       context.read<FacturasProvider>().cargar();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // watch: se suscribe. Cada vez que el provider llama notifyListeners(),
-    // este build se ejecuta de nuevo y la pantalla se actualiza sola.
     final provider = context.watch<FacturasProvider>();
 
     return Column(

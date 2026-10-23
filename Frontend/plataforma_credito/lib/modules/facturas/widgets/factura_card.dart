@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/utils/formato.dart';
 import '../../../models/factura.dart';
 import 'estado_factura_chip.dart';
+import '../screens/factura_detalles_screen.dart';
 
 class FacturaCard extends StatelessWidget {
   const FacturaCard({super.key, required this.factura});
@@ -15,7 +16,16 @@ class FacturaCard extends StatelessWidget {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
+        child: InkWell(
+        onTap: () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => FacturaDetalleScreen(factura: factura),
+        ),
+      );
+    },
+    child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -52,6 +62,7 @@ class FacturaCard extends StatelessWidget {
           ],
         ),
       ),
+        ),
     );
   }
 }
