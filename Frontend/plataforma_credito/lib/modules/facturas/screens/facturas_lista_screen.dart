@@ -6,6 +6,7 @@ import '../../../widgets/vista_error.dart';
 import '../providers/facturas_provider.dart';
 import '../widgets/factura_card.dart';
 import '../widgets/filtro_estados.dart';
+import 'factura_form_screen.dart';
 
 // StatefulWidget, necesita ejecutar algo UNA vez al abrirse:
 class FacturasListaScreen extends StatefulWidget {
@@ -42,6 +43,17 @@ class _FacturasListaScreenState extends State<FacturasListaScreen> {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const Spacer(),
+              FilledButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const FacturaFormScreen(),
+                  ),
+                ),
+                icon: const Icon(Icons.add),
+                label: const Text('Nueva factura'),
+              ),
+              const SizedBox(width: 8),
               IconButton(
                 tooltip: 'Actualizar',
                 icon: const Icon(Icons.refresh),
