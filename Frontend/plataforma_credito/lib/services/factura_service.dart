@@ -3,6 +3,7 @@ import '../models/estado_factura.dart';
 import '../models/factura.dart';
 import '../models/factura_pagina.dart';
 import 'api_client.dart';
+import '../models/empresa_opcion.dart';
 
 class FacturaService {
   // Recibe el cliente HTTP ya creado (inyección de dependencias).
@@ -39,5 +40,14 @@ class FacturaService {
   Future<Factura> crear(CrearFactura factura) async {
     final datos = await _api.post('/api/facturas', factura.toJson());
     return Factura.fromJson(datos as Map<String, dynamic>);
+  }
+
+  /// Empresas visibles para el usuario (una pyme ve solo las suyas).
+  Future<List<EmpresaOpcion>> listarEmpresas() async {
+    final datos = await _api.get('/api/empresas', query: {'limit': '100'});
+    final lista = (datos as Map<String, dynamic>)['empresas'] as List<dynamic>;
+    return lista
+        .map((e) => EmpresaOpcion.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 }
