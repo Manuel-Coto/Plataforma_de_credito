@@ -2,6 +2,14 @@
 
 URL local: `http://127.0.0.1:3000`. El backend crea la base `usuarios` y el índice `usuarios-correo/por-correo` al iniciar; si existen, continúa sin borrarlos. La estructura interna está en [la documentación de usuarios](../../database/usuarios/README.md).
 
+## Configuración local
+
+Configurar `COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD` y `JWT_SECRET` en `Backend/credito_backend/.env`. La clave JWT debe ser aleatoria, tener al menos 32 caracteres, no contener `CAMBIAR` ni espacios externos. No subir este archivo a Git. `JWT_TTL_SECONDS` es opcional (3600 por defecto; rango 60–86400).
+
+Después de cambiar `.env`, reiniciar el backend desde `Backend/credito_backend` con `cargo run`. Si aparece `Usuarios no configurado; revisar CouchDB y JWT_SECRET`, el registro responderá 503 aunque `/api/health` esté activo.
+
+La pantalla Flutter de usuarios envía el formulario a `POST /api/auth/register`, bloquea el botón mientras espera y muestra la respuesta de error del servidor. Al completar el registro, confirma la creación y borra la contraseña del formulario.
+
 ## Rutas
 
 | Método y ruta | Acceso | Respuesta exitosa |

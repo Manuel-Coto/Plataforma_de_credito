@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import '../../../services/api_exception.dart';
 
 class RegistroUsuarioScreen extends StatefulWidget {
-  const RegistroUsuarioScreen({super.key, this.onGuardar});
+  const RegistroUsuarioScreen({super.key, required this.onGuardar, this.onCreado});
 
-  final ValueChanged<Map<String, String>>? onGuardar;
+  final Future<void> Function(Map<String, String>) onGuardar;
+  final ValueChanged<String>? onCreado;
 
   @override
   State<RegistroUsuarioScreen> createState() => _RegistroUsuarioScreenState();
@@ -16,6 +18,7 @@ class _RegistroUsuarioScreenState extends State<RegistroUsuarioScreen> {
   final _password = TextEditingController();
   String _rol = 'pyme';
   bool _mostrarPassword = false;
+  bool _guardando = false;
 
   @override
   void dispose() {
@@ -25,14 +28,35 @@ class _RegistroUsuarioScreenState extends State<RegistroUsuarioScreen> {
     super.dispose();
   }
 
-  void _guardar() {
-    if (!_formKey.currentState!.validate()) return;
-    widget.onGuardar?.call({
+  Future<void> _guardar() async {
+    if (_guardando || !_formKey.currentState!.validate()) return;
+    setState(() => _guardando = true);
+    try {
+      await widget.onGuardar({
       'nombre': _nombre.text.trim(),
       'correo': _correo.text.trim(),
       'password': _password.text,
       'rol': _rol,
-    });
+      });
+      if (!mounted) return;
+      _password.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cuenta creada correctamente.')),
+      );
+      widget.onCreado?.call(_correo.text.trim());
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo completar el registro. Intenta nuevamente.')),
+      );
+    } finally {
+      if (mounted) setState(() => _guardando = false);
+    }
   }
 
   @override
@@ -224,11 +248,11 @@ class _RegistroUsuarioScreenState extends State<RegistroUsuarioScreen> {
                           width: double.infinity,
                           height: 54,
                           child: FilledButton.icon(
-                            onPressed: _guardar,
+                            onPressed: _guardando ? null : _guardar,
                             icon: const Icon(Icons.person_add_alt_1),
-                            label: const Text(
-                              'Crear cuenta',
-                              style: TextStyle(fontWeight: FontWeight.w700),
+                            label: Text(
+                              _guardando ? 'Creando cuenta...' : 'Crear cuenta',
+                              style: const TextStyle(fontWeight: FontWeight.w700),
                             ),
                             style: FilledButton.styleFrom(
                               backgroundColor: const Color(0xFF176B68),

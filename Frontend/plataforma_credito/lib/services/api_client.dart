@@ -21,6 +21,9 @@ class ApiClient {
   final http.Client _http;
   final String baseUrl;
   String? token; // lo asigna el módulo 1 (login)
+  void Function()? onUnauthorized;
+
+  void close() => _http.close();
 
   static const Duration _tiempoMaximo = Duration(seconds: 10);
 
@@ -57,8 +60,13 @@ class ApiClient {
   }
 
   Future<dynamic> _enviar(Future<http.Response> Function() peticion) async {
+    final tokenEnviado = token;
     try {
       final respuesta = await peticion().timeout(_tiempoMaximo);
+      if (respuesta.statusCode == 401 &&
+          tokenEnviado != null && tokenEnviado == token) {
+        onUnauthorized?.call();
+      }
       return _procesar(respuesta);
     } on TimeoutException {
       throw ApiException('El servidor tardó demasiado en responder.');
