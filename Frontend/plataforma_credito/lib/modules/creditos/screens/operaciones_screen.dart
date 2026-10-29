@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:plataforma_credito/core/format.dart';
 import 'package:plataforma_credito/modules/creditos/providers/operaciones_provider.dart';
+
+import 'operacion_detalle_screen.dart';
 
 class OperacionesScreen extends StatefulWidget {
   const OperacionesScreen({super.key});
@@ -85,7 +86,11 @@ class _OperacionesScreenState extends State<OperacionesScreen> {
                 ]),
               ),
               trailing: Text(estadoLegible(o.estado)),
-              onTap: () => context.push('/operaciones/${o.id}', extra: o),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => OperacionDetalleScreen(operacion: o),
+                ),
+              ),
             ),
           );
         },
