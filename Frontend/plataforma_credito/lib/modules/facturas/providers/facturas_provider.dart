@@ -5,6 +5,8 @@ import '../../../models/estado_factura.dart';
 import '../../../models/factura.dart';
 import '../../../services/api_exception.dart';
 import '../../../services/factura_service.dart';
+import '../../../models/crear_factura.dart';
+import '../../../models/empresa_opcion.dart';
 
 // "extends ChangeNotifier": hereda la capacidad de avisar a quien escuche
 // (las pantallas) con notifyListeners().
@@ -53,6 +55,14 @@ class FacturasProvider extends ChangeNotifier {
   /// Cambia el filtro por estado (null = todas) y recarga.
   Future<void> filtrarPor(EstadoFactura? estado) async {
     _filtro = estado;
+    await cargar();
+  }
+
+  Future<List<EmpresaOpcion>> cargarEmpresas() => _servicio.listarEmpresas();
+
+  /// Si el backend rechaza la factura, lanza ApiException y la pantalla
+  Future<void> crear(CrearFactura datos) async {
+    await _servicio.crear(datos);
     await cargar();
   }
 }
