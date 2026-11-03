@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class EmpresaFormScreen extends StatefulWidget {
   const EmpresaFormScreen({super.key, this.onGuardar});
 
-  final ValueChanged<Map<String, String>>? onGuardar;
+  final Future<void> Function(Map<String, String>)? onGuardar;
 
   @override
   State<EmpresaFormScreen> createState() => _EmpresaFormScreenState();
@@ -16,6 +17,7 @@ class _EmpresaFormScreenState extends State<EmpresaFormScreen> {
   final _correo = TextEditingController();
   final _telefono = TextEditingController();
   final _direccion = TextEditingController();
+  bool _enviando = false;
 
   @override
   void dispose() {
@@ -27,15 +29,34 @@ class _EmpresaFormScreenState extends State<EmpresaFormScreen> {
     super.dispose();
   }
 
-  void _guardar() {
+  Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
-    widget.onGuardar?.call({
-      'nombre': _nombre.text.trim(),
-      'nit': _nit.text.trim(),
-      'correo': _correo.text.trim(),
-      'telefono': _telefono.text.trim(),
-      'direccion': _direccion.text.trim(),
-    });
+    setState(() => _enviando = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await widget.onGuardar?.call({
+        'nombre': _nombre.text.trim(),
+        'nit': _nit.text.trim(),
+        'correo': _correo.text.trim(),
+        'telefono': _telefono.text.trim(),
+        'direccion': _direccion.text.trim(),
+      });
+      if (!mounted) return;
+      for (final c in [_nombre, _nit, _correo, _telefono, _direccion]) {
+        c.clear();
+      }
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Empresa registrada. Estado: Pendiente.'),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('No se pudo registrar la empresa: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
   }
 
   @override
@@ -111,9 +132,9 @@ class _EmpresaFormScreenState extends State<EmpresaFormScreen> {
                           'Información de la empresa',
                           style: Theme.of(context).textTheme.titleLarge
                               ?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFF172B4D),
-                              ),
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF172B4D),
+                          ),
                         ),
                         const SizedBox(height: 6),
                         const Text(
@@ -135,12 +156,15 @@ class _EmpresaFormScreenState extends State<EmpresaFormScreen> {
                             final nit = _companyField(
                               _nit,
                               'NIT',
-                              'Número de identificación tributaria',
+                              'Ej. 123456789',
                               Icons.badge_outlined,
                               required: true,
-                              maxLength: 64,
+                              maxLength: 9,
+                              minLength: 9,
+                              digitsOnly: true,
+                              keyboardType: TextInputType.number,
                             );
-                            if (!twoColumns)
+                            if (!twoColumns) {
                               return Column(
                                 children: [
                                   name,
@@ -148,6 +172,7 @@ class _EmpresaFormScreenState extends State<EmpresaFormScreen> {
                                   nit,
                                 ],
                               );
+                            }
                             return Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -174,12 +199,13 @@ class _EmpresaFormScreenState extends State<EmpresaFormScreen> {
                             final phone = _companyField(
                               _telefono,
                               'Teléfono',
-                              'Ej. 2222-3344',
+                              'Ej. 22223344',
                               Icons.phone_outlined,
+                              maxLength: 8,
+                              digitsOnly: true,
                               keyboardType: TextInputType.phone,
-                              maxLength: 50,
                             );
-                            if (!twoColumns)
+                            if (!twoColumns) {
                               return Column(
                                 children: [
                                   email,
@@ -187,6 +213,7 @@ class _EmpresaFormScreenState extends State<EmpresaFormScreen> {
                                   phone,
                                 ],
                               );
+                            }
                             return Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -241,8 +268,17 @@ class _EmpresaFormScreenState extends State<EmpresaFormScreen> {
                           width: double.infinity,
                           height: 54,
                           child: FilledButton.icon(
-                            onPressed: _guardar,
-                            icon: const Icon(Icons.save_outlined),
+                            onPressed: _enviando ? null : _guardar,
+                            icon: _enviando
+                                ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                                : const Icon(Icons.save_outlined),
                             label: const Text(
                               'Guardar empresa',
                               style: TextStyle(fontWeight: FontWeight.w700),
@@ -269,34 +305,43 @@ class _EmpresaFormScreenState extends State<EmpresaFormScreen> {
 }
 
 Widget _companyField(
-  TextEditingController controller,
-  String label,
-  String hint,
-  IconData icon, {
-  bool required = false,
-  int? maxLength,
-  TextInputType? keyboardType,
-}) => TextFormField(
+    TextEditingController controller,
+    String label,
+    String hint,
+    IconData icon, {
+      bool required = false,
+      int? maxLength,
+      int? minLength,
+      bool digitsOnly = false,
+      TextInputType? keyboardType,
+    }) => TextFormField(
   controller: controller,
   keyboardType: keyboardType,
   maxLength: maxLength,
+  inputFormatters: [
+    if (digitsOnly) FilteringTextInputFormatter.digitsOnly,
+  ],
   validator: (value) {
     final text = value?.trim() ?? '';
     if (required && text.isEmpty) return 'Completa este campo';
+    if (minLength != null && text.isNotEmpty && text.length < minLength) {
+      return '$label debe tener $minLength dígitos';
+    }
     if (label == 'Correo electrónico' &&
         text.isNotEmpty &&
-        !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(text))
+        !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(text)) {
       return 'Escribe un correo válido';
+    }
     return null;
   },
   decoration: _companyDecoration(label, icon, hint: hint),
 );
 
 InputDecoration _companyDecoration(
-  String label,
-  IconData icon, {
-  String? hint,
-}) => InputDecoration(
+    String label,
+    IconData icon, {
+      String? hint,
+    }) => InputDecoration(
   labelText: label,
   hintText: hint,
   prefixIcon: Icon(icon, size: 20),

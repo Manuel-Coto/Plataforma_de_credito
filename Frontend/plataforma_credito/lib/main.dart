@@ -12,6 +12,7 @@ import 'modules/usuarios/providers/sesion_provider.dart';
 import 'modules/usuarios/screens/cuenta_screen.dart';
 import 'modules/usuarios/screens/login_screen.dart';
 import 'services/api_client.dart';
+import 'services/empresa_service.dart';
 import 'services/factura_service.dart';
 
 void main() => runApp(const PlataformaCreditoApp());
@@ -103,14 +104,8 @@ class PlataformaCreditoApp extends StatelessWidget {
                     children: [
                       const CuentaScreen(),
                       EmpresaFormScreen(
-                        onGuardar: (_) =>
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Formulario validado. Falta conectar el envío al backend.',
-                                ),
-                              ),
-                            ),
+                        onGuardar: (datos) =>
+                            EmpresaService(sesion.api).crear(datos),
                       ),
                       const FacturasListaScreen(),
                       const OperacionesScreen(),
