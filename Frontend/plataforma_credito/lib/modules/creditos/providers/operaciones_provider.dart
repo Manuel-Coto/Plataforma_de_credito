@@ -25,10 +25,28 @@ class OperacionesProvider extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
-      final data = await _api.get('/api/operaciones') as List;
-      _todas = data.map((e) => Operacion.fromJson(e as Map<String, dynamic>)).toList();
+      final resp = await _api.get('/api/creditos');
+      // El backend puede devolver una lista directa o un objeto paginado
+      // (por ejemplo {"items": [...], "bookmark": "..."}).
+      final List data;
+      if (resp is List) {
+        data = resp;
+      } else if (resp is Map<String, dynamic>) {
+        data = (resp['items'] ??
+            resp['data'] ??
+            resp['creditos'] ??
+            resp['resultados'] ??
+            const []) as List;
+      } else {
+        data = const [];
+      }
+      _todas = data
+          .map((e) => Operacion.fromJson(e as Map<String, dynamic>))
+          .toList();
     } on ApiException catch (e) {
       error = e.message;
+    } catch (e) {
+      error = 'Respuesta inesperada del servidor: $e';
     }
     cargando = false;
     notifyListeners();
