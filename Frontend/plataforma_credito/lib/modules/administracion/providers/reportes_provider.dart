@@ -19,6 +19,8 @@ class ReportesProvider extends ChangeNotifier {
       resumen = Resumen.fromJson(data as Map<String, dynamic>);
     } on ApiException catch (e) {
       error = e.message;
+    } catch (e) {
+      error = 'Respuesta inesperada del servidor: $e';
     }
     cargando = false;
     notifyListeners();
