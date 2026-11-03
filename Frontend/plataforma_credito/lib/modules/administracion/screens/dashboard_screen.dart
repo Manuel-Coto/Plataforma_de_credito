@@ -33,13 +33,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ? const Center(child: Text('Sin datos todavía.'))
                   : ListView(padding: const EdgeInsets.all(16), children: [
                       Wrap(spacing: 12, runSpacing: 12, children: [
-                        _kpi('Operaciones', '${r.totalOperaciones}'),
-                        _kpi('Monto total', money(r.montoTotalCentavos)),
-                        _kpi('Empresas verificadas', '${r.empresasVerificadas}'),
-                        _kpi('Facturas pendientes', '${r.facturasPendientes}'),
+                        _kpi('Créditos', '${r.totalCreditos}'),
+                        if (r.totalesPorMoneda.isEmpty) _kpi('Monto total', '0'),
+                        for (final monto in r.totalesPorMoneda.entries)
+                          _kpi('Monto total (${monto.key})', money(monto.value, monto.key)),
+                        _kpi('Empresas activas', '${r.empresasActivas}'),
+                        _kpi('Facturas pendientes de verificación', '${r.facturasPendientes}'),
                       ]),
                       const SizedBox(height: 24),
-                      Text('Operaciones por estado',
+                      Text('Créditos por estado',
                           style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 8),
                       for (final e in r.porEstado.entries)
@@ -49,9 +51,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             SizedBox(width: 120, child: Text(estadoLegible(e.key))),
                             Expanded(
                               child: LinearProgressIndicator(
-                                value: r.totalOperaciones == 0
+                                value: r.totalCreditos == 0
                                     ? 0
-                                    : e.value / r.totalOperaciones,
+                                    : e.value / r.totalCreditos,
                                 minHeight: 10,
                               ),
                             ),

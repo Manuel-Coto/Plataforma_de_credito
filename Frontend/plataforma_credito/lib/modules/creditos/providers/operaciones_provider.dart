@@ -25,8 +25,20 @@ class OperacionesProvider extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
-      final data = await _api.get('/api/operaciones') as List;
-      _todas = data.map((e) => Operacion.fromJson(e as Map<String, dynamic>)).toList();
+      final creditos = <Operacion>[];
+      final consultados = <String>{};
+      String? bookmark;
+      do {
+        final pagina = await _api.get('/api/creditos', query: {
+          'limit': '100',
+          if (bookmark != null) 'bookmark': bookmark,
+        });
+        final filas = pagina['creditos'] as List;
+        creditos.addAll(filas.map((fila) => Operacion.fromJson(fila)));
+        bookmark = pagina['bookmark'] as String?;
+        if (filas.isEmpty) break;
+      } while (bookmark != null && bookmark.isNotEmpty && consultados.add(bookmark));
+      _todas = creditos;
     } on ApiException catch (e) {
       error = e.message;
     }

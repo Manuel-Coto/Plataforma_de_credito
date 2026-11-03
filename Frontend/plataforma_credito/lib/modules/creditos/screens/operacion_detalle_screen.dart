@@ -21,9 +21,10 @@ class OperacionDetalleScreen extends StatelessWidget {
         const SizedBox(height: 4),
         Text('Pagado ${money(o.pagadoCentavos, o.moneda)} de ${money(o.montoCentavos, o.moneda)}'),
         const SizedBox(height: 24),
-        Text('Pagos (simulados)', style: Theme.of(context).textTheme.titleMedium),
+        if (o.historialVisible)
+          Text('Pagos (simulados)', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
-        if (o.pagos.isEmpty) const Text('Todavía no se registran pagos.'),
+        if (o.historialVisible && o.pagos.isEmpty) const Text('Todavía no se registran pagos.'),
         for (final p in o.pagos)
           ListTile(
             contentPadding: EdgeInsets.zero,

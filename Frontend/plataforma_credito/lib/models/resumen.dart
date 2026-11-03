@@ -1,24 +1,33 @@
-/// Campos supuestos para GET /api/reportes/resumen.
 class Resumen {
   Resumen({
-    required this.totalOperaciones,
-    required this.montoTotalCentavos,
-    required this.empresasVerificadas,
+    required this.totalCreditos,
+    required this.totalesPorMoneda,
+    required this.empresasActivas,
     required this.facturasPendientes,
     required this.porEstado,
   });
-  final int totalOperaciones;
-  final int montoTotalCentavos;
-  final int empresasVerificadas;
+
+  final int totalCreditos;
+  final Map<String, int> totalesPorMoneda;
+  final int empresasActivas;
   final int facturasPendientes;
   final Map<String, int> porEstado;
 
-  factory Resumen.fromJson(Map<String, dynamic> j) => Resumen(
-        totalOperaciones: (j['total_operaciones'] ?? 0) as int,
-        montoTotalCentavos: (j['monto_total_centavos'] ?? 0) as int,
-        empresasVerificadas: (j['empresas_verificadas'] ?? 0) as int,
-        facturasPendientes: (j['facturas_pendientes'] ?? 0) as int,
-        porEstado: ((j['operaciones_por_estado'] ?? {}) as Map)
-            .map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
-      );
+  factory Resumen.fromJson(Map<String, dynamic> json) {
+    final reportes = {
+      for (final reporte in (json['reportes'] as List).cast<Map<String, dynamic>>())
+        reporte['modulo'] as String: reporte,
+    };
+    final creditos = reportes['creditos']!;
+    final montos = creditos['montos_por_moneda'] as Map<String, dynamic>;
+    return Resumen(
+      totalCreditos: creditos['total'] as int,
+      totalesPorMoneda: montos.map(
+        (moneda, valores) => MapEntry(moneda, valores['total_centavos'] as int),
+      ),
+      empresasActivas: reportes['empresas']!['por_estado']['activa'] ?? 0,
+      facturasPendientes: reportes['facturas']!['por_estado']['pendiente_verificacion'] ?? 0,
+      porEstado: Map<String, int>.from(creditos['por_estado']),
+    );
+  }
 }
