@@ -1,5 +1,6 @@
 use crate::modules::usuarios::model::{Rol, Usuario};
 use chrono::Utc;
+use serde_json::json;
 
 use super::{
     model::{
@@ -49,6 +50,7 @@ impl EmpresaService {
                 telefono: input.telefono,
                 direccion: input.direccion,
                 estado: EstadoEmpresa::Pendiente,
+                motivo_rechazo: None,
                 usuario_responsable_id: Some(user.id.clone()),
                 fecha_creacion: Some(now),
                 fecha_actualizacion: Some(now),
@@ -136,6 +138,8 @@ impl EmpresaService {
             EstadoEmpresa::Activa | EstadoEmpresa::Rechazada
         ) {
             document.datos.estado = EstadoEmpresa::Pendiente;
+            // Vuelve a revisión: el motivo anterior ya no aplica.
+            document.datos.motivo_rechazo = None;
         }
         document.datos.fecha_actualizacion = Some(Utc::now());
         repository.save(document).await?.into_empresa()
@@ -161,11 +165,29 @@ impl EmpresaService {
         id: &str,
         revision: &str,
         approved: bool,
+        motivo: Option<String>,
     ) -> Result<(Empresa, String), EmpresaError> {
         if user.rol != Rol::Administrador {
             return Err(EmpresaError::Forbidden);
         }
         validate_id(id)?;
+        // Rechazar exige motivo; aprobar lo borra.
+        let motivo = if approved {
+            None
+        } else {
+            let motivo = motivo.unwrap_or_default().trim().to_owned();
+            if motivo.is_empty() {
+                return Err(EmpresaError::Invalid(
+                    "El motivo del rechazo es obligatorio",
+                ));
+            }
+            if motivo.chars().count() > 500 {
+                return Err(EmpresaError::Invalid(
+                    "El motivo no puede superar 500 caracteres",
+                ));
+            }
+            Some(motivo)
+        };
         let repository = self.repository()?;
         let mut document = repository.get(id).await?;
         if document.rev.as_deref() != Some(revision) {
@@ -190,9 +212,50 @@ impl EmpresaService {
         if document.datos.estado != EstadoEmpresa::Pendiente {
             return Err(EmpresaError::InvalidTransition);
         }
+        let estado_anterior = document.datos.estado;
         document.datos.estado = target;
+        document.datos.motivo_rechazo = motivo.clone();
         document.datos.fecha_actualizacion = Some(Utc::now());
-        reviewed_response(repository.save(document).await?)
+        let guardado = repository.save(document).await?;
+
+        // Auditoría: CouchDB no permite transacciones entre bases, así que se
+        // registra después de guardar. Si falla, queda en el log del servidor.
+        let evento = json!({
+            "fecha": Utc::now().to_rfc3339(),
+            "actor_id": user.id,
+            "actor_rol": rol_texto(&user.rol),
+            "accion": if approved { "empresa.aprobada" } else { "empresa.rechazada" },
+            "entidad": "empresa",
+            "entidad_id": id,
+            "antes": { "estado": estado_texto(estado_anterior) },
+            "despues": { "estado": estado_texto(target) },
+            "motivo": motivo,
+        });
+        if repository.registrar_auditoria(evento).await.is_err() {
+            tracing::error!(
+                etapa = "auditoria",
+                "La revisión se guardó pero no se pudo registrar en auditoría"
+            );
+        }
+
+        reviewed_response(guardado)
+    }
+}
+
+fn estado_texto(estado: EstadoEmpresa) -> &'static str {
+    match estado {
+        EstadoEmpresa::Pendiente => "pendiente",
+        EstadoEmpresa::Activa => "activa",
+        EstadoEmpresa::Rechazada => "rechazada",
+        EstadoEmpresa::Inactiva => "inactiva",
+    }
+}
+
+fn rol_texto(rol: &Rol) -> &'static str {
+    match rol {
+        Rol::Administrador => "administrador",
+        Rol::Pyme => "pyme",
+        Rol::Inversionista => "inversionista",
     }
 }
 
@@ -278,22 +341,22 @@ fn valid_email(email: &str) -> bool {
         || local.ends_with('.')
         || local.contains("..")
         || !local
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || b".!#$%&'*+-/=?^_`{|}~".contains(&c))
+        .bytes()
+        .all(|c| c.is_ascii_alphanumeric() || b".!#$%&'*+-/=?^_`{|}~".contains(&c))
     {
         return false;
     }
     let labels: Vec<_> = domain.split('.').collect();
     labels.len() >= 2
         && labels.iter().all(|label| {
-            !label.is_empty()
-                && label.len() <= 63
-                && !label.starts_with('-')
-                && !label.ends_with('-')
-                && label
-                    .bytes()
-                    .all(|c| c.is_ascii_alphanumeric() || c == b'-')
-        })
+        !label.is_empty()
+            && label.len() <= 63
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && label
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || c == b'-')
+    })
 }
 
 #[cfg(test)]

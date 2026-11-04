@@ -8,7 +8,7 @@ use axum::{
 };
 
 use super::{
-    model::{Empresa, EmpresaInput, EmpresaPagina, ListQuery},
+    model::{Empresa, EmpresaInput, EmpresaPagina, ListQuery, RechazoInput},
     service::EmpresaService,
     EmpresaError,
 };
@@ -55,7 +55,7 @@ pub async fn approve(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<(HeaderMap, Json<Empresa>), EmpresaError> {
-    review(service, user, id, headers, true).await
+    review(service, user, id, headers, true, None).await
 }
 
 pub async fn reject(
@@ -63,8 +63,12 @@ pub async fn reject(
     user: AuthenticatedUser,
     Path(id): Path<String>,
     headers: HeaderMap,
+    body: Result<Json<RechazoInput>, JsonRejection>,
 ) -> Result<(HeaderMap, Json<Empresa>), EmpresaError> {
-    review(service, user, id, headers, false).await
+    let Json(input) = body.map_err(|_| {
+        EmpresaError::Invalid("JSON inválido; envíe {\"motivo\": \"...\"} para rechazar")
+    })?;
+    review(service, user, id, headers, false, Some(input.motivo)).await
 }
 
 async fn review(
@@ -73,11 +77,16 @@ async fn review(
     id: String,
     headers: HeaderMap,
     approved: bool,
+    motivo: Option<String>,
 ) -> Result<(HeaderMap, Json<Empresa>), EmpresaError> {
     user.require_roles(&[Rol::Administrador])
         .map_err(|_| EmpresaError::Forbidden)?;
     let revision = expected_revision(&headers)?;
-    with_etag(service.review(&user.0, &id, revision, approved).await?)
+    with_etag(
+        service
+            .review(&user.0, &id, revision, approved, motivo)
+            .await?,
+    )
 }
 
 fn expected_revision(headers: &HeaderMap) -> Result<&str, EmpresaError> {

@@ -277,4 +277,21 @@ impl EmpresaRepository {
         document.rev = Some(result.rev);
         Ok(document)
     }
+    pub async fn registrar_auditoria(&self, evento: Value) -> Result<(), EmpresaError> {
+        let mut url = self.database_url.clone();
+        {
+            let mut segments = url
+                .path_segments_mut()
+                .map_err(|_| EmpresaError::Configuration)?;
+            segments.pop().push("auditoria");
+        }
+        let request = self
+            .client
+            .request(Method::POST, url)
+            .basic_auth(&self.username, Some(&self.password))
+            .json(&evento);
+        Self::send(request, false).await?;
+        Ok(())
+    }
+
 }

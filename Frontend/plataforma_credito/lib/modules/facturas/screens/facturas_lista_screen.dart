@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/estado_carga.dart';
+import '../../../core/roles.dart';
 import '../../../widgets/vista_error.dart';
+import '../../usuarios/providers/sesion_provider.dart';
 import '../providers/facturas_provider.dart';
 import '../widgets/factura_card.dart';
 import '../widgets/filtro_estados.dart';
@@ -30,6 +32,9 @@ class _FacturasListaScreenState extends State<FacturasListaScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<FacturasProvider>();
+    // Solo la pyme registra facturas; administrador e inversionista no.
+    final puedeCrear =
+        context.select<SesionProvider, Rol>((s) => s.rol) == Rol.pyme;
 
     return Column(
       children: [
@@ -43,17 +48,19 @@ class _FacturasListaScreenState extends State<FacturasListaScreen> {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const Spacer(),
-              FilledButton.icon(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const FacturaFormScreen(),
+              if (puedeCrear) ...[
+                FilledButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const FacturaFormScreen(),
+                    ),
                   ),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Nueva factura'),
                 ),
-                icon: const Icon(Icons.add),
-                label: const Text('Nueva factura'),
-              ),
-              const SizedBox(width: 8),
+                const SizedBox(width: 8),
+              ],
               IconButton(
                 tooltip: 'Actualizar',
                 icon: const Icon(Icons.refresh),

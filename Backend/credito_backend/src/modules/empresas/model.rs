@@ -21,6 +21,13 @@ pub struct EmpresaInput {
     pub direccion: String,
 }
 
+/// Cuerpo de PATCH /api/empresas/{id}/rechazar
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RechazoInput {
+    pub motivo: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EmpresaDatos {
     pub nombre: String,
@@ -33,6 +40,9 @@ pub struct EmpresaDatos {
     pub direccion: String,
     #[serde(default)]
     pub estado: EstadoEmpresa,
+    // Documentos antiguos no lo tienen: por defecto None.
+    #[serde(default)]
+    pub motivo_rechazo: Option<String>,
     #[serde(default)]
     pub usuario_responsable_id: Option<String>,
     // Documentos antiguos pueden no tener fechas: no inventamos su historial.

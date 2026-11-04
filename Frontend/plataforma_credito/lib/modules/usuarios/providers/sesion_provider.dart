@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import '../../../core/roles.dart';
 import '../../../services/api_client.dart';
 
 /// La sesión y su token viven únicamente en memoria.
@@ -20,6 +21,9 @@ class SesionProvider extends ChangeNotifier {
   bool get autenticado => _usuario != null;
   bool get ocupado => _ocupado;
   int get version => _version;
+
+  /// Rol del usuario en sesión (si no hay sesión o no se reconoce, pyme).
+  Rol get rol => rolDesdeString(_usuario?['rol'] as String?);
 
   Future<void> ingresar(String correo, String password) async {
     if (_ocupado) return;

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'core/roles.dart';
 import 'modules/administracion/providers/reportes_provider.dart';
 import 'modules/administracion/screens/dashboard_screen.dart';
 import 'modules/creditos/providers/operaciones_provider.dart';
 import 'modules/creditos/screens/operaciones_screen.dart';
 import 'modules/empresas/screens/empresa_form_screen.dart';
+import 'modules/empresas/screens/empresas_pendientes_screen.dart';
 import 'modules/facturas/providers/facturas_provider.dart';
 import 'modules/facturas/screens/facturas_lista_screen.dart';
 import 'modules/usuarios/providers/sesion_provider.dart';
@@ -57,69 +59,99 @@ class PlataformaCreditoApp extends StatelessWidget {
             ),
             home: !sesion.autenticado
                 ? const LoginScreen()
-                : DefaultTabController(
-              length: 5,
-              child: Builder(
-                builder: (context) => Scaffold(
-                  appBar: AppBar(
-                    actions: [
-                      IconButton(
-                        tooltip: 'Cerrar sesión',
-                        onPressed: sesion.cerrar,
-                        icon: const Icon(Icons.logout),
-                      ),
-                    ],
-                    title: const Row(
-                      children: [
-                        Icon(Icons.account_balance_rounded,
-                            color: Color(0xFF176B68)),
-                        SizedBox(width: 12),
-                        Text('Plataforma de Crédito'),
-                      ],
-                    ),
-                    bottom: const TabBar(
-                      isScrollable: true,
-                      tabAlignment: TabAlignment.start,
-                      tabs: [
-                        Tab(
-                            icon: Icon(Icons.person_outline),
-                            text: 'Usuarios'),
-                        Tab(
-                            icon: Icon(Icons.business_outlined),
-                            text: 'Empresas'),
-                        Tab(
-                            icon: Icon(Icons.receipt_long_outlined),
-                            text: 'Facturas'),
-                        Tab(
-                            icon: Icon(Icons.payments_outlined),
-                            text: 'Créditos y pagos'),
-                        Tab(
-                            icon: Icon(
-                                Icons.admin_panel_settings_outlined),
-                            text: 'Administración'),
-                      ],
-                    ),
-                  ),
-                  body: TabBarView(
-                    children: [
-                      const CuentaScreen(),
-                      EmpresaFormScreen(
-                        onGuardar: (datos) =>
-                            EmpresaService(sesion.api).crear(datos),
-                      ),
-                      const FacturasListaScreen(),
-                      const OperacionesScreen(),
-                      const DashboardScreen(),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+                : _Principal(sesion: sesion),
           ),
         ),
       ),
     );
   }
+}
+
+/// Pantalla principal: las pestañas dependen del rol del usuario.
+class _Principal extends StatelessWidget {
+  const _Principal({required this.sesion});
+  final SesionProvider sesion;
+
+  @override
+  Widget build(BuildContext context) {
+    final secciones = _seccionesPara(sesion.rol, sesion);
+
+    return DefaultTabController(
+      // Si cambia el rol (o la sesión), se reconstruye el controlador.
+      key: ValueKey('${sesion.version}-${sesion.rol.name}'),
+      length: secciones.length,
+      child: Scaffold(
+        appBar: AppBar(
+          actions: [
+            IconButton(
+              tooltip: 'Cerrar sesión',
+              onPressed: sesion.cerrar,
+              icon: const Icon(Icons.logout),
+            ),
+          ],
+          title: const Row(
+            children: [
+              Icon(Icons.account_balance_rounded, color: Color(0xFF176B68)),
+              SizedBox(width: 12),
+              Text('Plataforma de Crédito'),
+            ],
+          ),
+          bottom: TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            tabs: [for (final s in secciones) s.tab],
+          ),
+        ),
+        body: TabBarView(
+          children: [for (final s in secciones) s.pantalla],
+        ),
+      ),
+    );
+  }
+}
+
+class _Seccion {
+  const _Seccion(this.tab, this.pantalla);
+  final Tab tab;
+  final Widget pantalla;
+}
+
+List<_Seccion> _seccionesPara(Rol rol, SesionProvider sesion) {
+  const usuarios = Tab(icon: Icon(Icons.person_outline), text: 'Usuarios');
+  const empresas = Tab(icon: Icon(Icons.business_outlined), text: 'Empresas');
+  const facturas =
+  Tab(icon: Icon(Icons.receipt_long_outlined), text: 'Facturas');
+  const creditos =
+  Tab(icon: Icon(Icons.payments_outlined), text: 'Créditos y pagos');
+  const admin = Tab(
+      icon: Icon(Icons.admin_panel_settings_outlined), text: 'Administración');
+
+  return switch (rol) {
+    Rol.pyme => [
+      const _Seccion(usuarios, CuentaScreen()),
+      _Seccion(
+        empresas,
+        EmpresaFormScreen(
+          onGuardar: (datos) => EmpresaService(sesion.api).crear(datos),
+        ),
+      ),
+      const _Seccion(facturas, FacturasListaScreen()),
+      const _Seccion(creditos, OperacionesScreen()),
+    ],
+    Rol.inversionista => [
+      const _Seccion(usuarios, CuentaScreen()),
+      const _Seccion(facturas, FacturasListaScreen()),
+      const _Seccion(creditos, OperacionesScreen()),
+    ],
+    Rol.administrador => [
+      const _Seccion(usuarios, CuentaScreen()),
+      const _Seccion(empresas, EmpresasPendientesScreen()),
+      const _Seccion(facturas, FacturasListaScreen()),
+      const _Seccion(creditos, OperacionesScreen()),
+      const _Seccion(admin, DashboardScreen()),
+      // Más adelante: Auditoría
+    ],
+  };
 }
 
 // Mantiene intacto el provider del módulo y descarta notificaciones de
