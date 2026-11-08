@@ -1,36 +1,19 @@
 import 'package:flutter/material.dart';
+import 'empty_state.dart';
 
 class VistaError extends StatelessWidget {
-  const VistaError({
-    super.key,
-    required this.mensaje,
-    required this.onReintentar,
-  });
-
+  const VistaError(
+      {super.key, required this.mensaje, required this.onReintentar});
   final String mensaje;
-  final VoidCallback onReintentar; // una función sin parámetros
+  final VoidCallback onReintentar;
 
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min, // la columna mide solo lo necesario
-          children: [
-            Icon(Icons.error_outline,
-                size: 48, color: Theme.of(context).colorScheme.error),
-            const SizedBox(height: 16),
-            Text(mensaje, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: onReintentar,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Reintentar'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => EmptyState(
+      icon: Icons.cloud_off_outlined,
+      title: 'No pudimos cargar la información',
+      message: mensaje,
+      action: OutlinedButton.icon(
+          onPressed: onReintentar,
+          icon: const Icon(Icons.refresh_rounded, size: 19),
+          label: const Text('Reintentar')));
 }

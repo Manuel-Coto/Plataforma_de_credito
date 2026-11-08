@@ -1,40 +1,61 @@
 import 'package:flutter/material.dart';
-
 import '../../../models/estado_factura.dart';
 
 class EstadoFacturaChip extends StatelessWidget {
   const EstadoFacturaChip({super.key, required this.estado});
-
   final EstadoFactura estado;
 
-  // switch como expresión: devuelve un valor. Dart obliga a cubrir TODOS los
-  // estados; si mañana se agrega uno nuevo al enum, esto no compila hasta
-  // que decidas su color.
-  Color get _color => switch (estado) {
-    EstadoFactura.pendienteVerificacion => Colors.orange,
-    EstadoFactura.verificada => Colors.blue,
-    EstadoFactura.disponible => Colors.teal,
-    EstadoFactura.parcialmenteFinanciada => Colors.indigo,
-    EstadoFactura.financiada => Colors.green,
-    EstadoFactura.pagada => Colors.green.shade800,
-    EstadoFactura.vencida => Colors.red,
-    EstadoFactura.rechazada => Colors.grey,
-  };
+  (Color foreground, Color background) get _palette => switch (estado) {
+        EstadoFactura.pendienteVerificacion => (
+            const Color(0xFF7D510C),
+            const Color(0xFFFFF3D8)
+          ),
+        EstadoFactura.verificada => (
+            const Color(0xFF315C86),
+            const Color(0xFFEDF3FA)
+          ),
+        EstadoFactura.disponible => (
+            const Color(0xFF2B6449),
+            const Color(0xFFEAF3ED)
+          ),
+        EstadoFactura.parcialmenteFinanciada => (
+            const Color(0xFF4B5486),
+            const Color(0xFFEFF0FA)
+          ),
+        EstadoFactura.financiada => (
+            const Color(0xFF2B6449),
+            const Color(0xFFEAF3ED)
+          ),
+        EstadoFactura.pagada => (
+            const Color(0xFF214E41),
+            const Color(0xFFE1EEE5)
+          ),
+        EstadoFactura.vencida => (
+            const Color(0xFF9C3D3B),
+            const Color(0xFFFCECE9)
+          ),
+        EstadoFactura.rechazada => (
+            const Color(0xFF73514F),
+            const Color(0xFFF4ECEA)
+          ),
+      };
 
   @override
   Widget build(BuildContext context) {
+    final (foreground, background) = _palette;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: _color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _color),
+        color: background,
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
         estado.etiqueta,
+        softWrap: true,
         style: TextStyle(
-          color: _color,
+          color: foreground,
           fontSize: 12,
+          height: 1.35,
           fontWeight: FontWeight.w600,
         ),
       ),

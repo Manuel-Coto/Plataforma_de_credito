@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+
+import '../../../core/theme/credito_theme.dart';
 import '../../../services/api_exception.dart';
+import 'auth_widgets.dart';
 
 class RegistroUsuarioScreen extends StatefulWidget {
-  const RegistroUsuarioScreen({super.key, required this.onGuardar, this.onCreado});
+  const RegistroUsuarioScreen(
+      {super.key, required this.onGuardar, this.onCreado});
 
   final Future<void> Function(Map<String, String>) onGuardar;
   final ValueChanged<String>? onCreado;
@@ -33,10 +37,10 @@ class _RegistroUsuarioScreenState extends State<RegistroUsuarioScreen> {
     setState(() => _guardando = true);
     try {
       await widget.onGuardar({
-      'nombre': _nombre.text.trim(),
-      'correo': _correo.text.trim(),
-      'password': _password.text,
-      'rol': _rol,
+        'nombre': _nombre.text.trim(),
+        'correo': _correo.text.trim(),
+        'password': _password.text,
+        'rol': _rol,
       });
       if (!mounted) return;
       _password.clear();
@@ -52,7 +56,11 @@ class _RegistroUsuarioScreenState extends State<RegistroUsuarioScreen> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo completar el registro. Intenta nuevamente.')),
+        const SnackBar(
+          content: Text(
+            'No se pudo completar el registro. Intenta nuevamente.',
+          ),
+        ),
       );
     } finally {
       if (mounted) setState(() => _guardando = false);
@@ -61,232 +69,273 @@ class _RegistroUsuarioScreenState extends State<RegistroUsuarioScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(28, 12, 28, 32),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 900),
+          constraints: const BoxConstraints(maxWidth: 680),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const _SectionEyebrow(
-                icon: Icons.person_add_alt_1,
-                label: 'USUARIOS',
+              Text(
+                'TU PRIMER PASO',
+                style: text.labelSmall?.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.6,
+                ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               Text(
                 'Crear una cuenta',
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                style: text.headlineMedium?.copyWith(
+                  color: AppColors.ink,
                   fontWeight: FontWeight.w700,
-                  color: const Color(0xFF172B4D),
+                  letterSpacing: -.8,
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Registra un nuevo perfil para acceder a la plataforma.',
-                style: Theme.of(context).textTheme.bodyLarge
-                    ?.copyWith(color: const Color(0xFF65758B)),
+              const SizedBox(height: 10),
+              const Text(
+                'Cuéntanos un poco de ti. Juntos, podemos llegar más lejos.',
+                style: TextStyle(color: AppColors.muted, height: 1.6),
               ),
               const SizedBox(height: 26),
-              Card(
-                elevation: 0,
-                color: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(22),
-                  side: const BorderSide(color: Color(0xFFE5EAF1)),
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.border),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(28),
+                padding: const EdgeInsets.all(24),
+                child: AutofillGroup(
                   child: Form(
                     key: _formKey,
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          'Datos de la cuenta',
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFF172B4D),
-                              ),
+                        const Text(
+                          'Tus datos',
+                          style: TextStyle(
+                            color: AppColors.ink,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                         const SizedBox(height: 6),
                         const Text(
-                          'Completa la información para registrar al usuario.',
-                          style: TextStyle(color: Color(0xFF65758B)),
+                          'Usaremos esta información para crear tu perfil.',
+                          style: TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 13,
+                            height: 1.5,
+                          ),
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 26),
                         LayoutBuilder(
                           builder: (context, constraints) {
-                            final twoColumns = constraints.maxWidth >= 620;
-                            final nameField = _field(
+                            final nombre = TextFormField(
                               controller: _nombre,
-                              label: 'Nombre completo',
-                              hint: 'Ej. María López',
-                              icon: Icons.person_outline,
+                              enabled: !_guardando,
+                              textCapitalization: TextCapitalization.words,
+                              autofillHints: const [AutofillHints.name],
+                              textInputAction: TextInputAction.next,
+                              decoration: authInputDecoration(
+                                'Nombre completo',
+                                Icons.person_outline_rounded,
+                                hint: 'Ej. María López',
+                              ),
                               validator: (value) {
                                 final name = value?.trim() ?? '';
-                                if (name.isEmpty)
+                                if (name.isEmpty) {
                                   return 'Escribe el nombre completo';
-                                if (name.length > 250)
+                                }
+                                if (name.length > 250) {
                                   return 'Máximo 250 caracteres';
+                                }
                                 return null;
                               },
                             );
-                            final emailField = _field(
+                            final correo = TextFormField(
                               controller: _correo,
-                              label: 'Correo electrónico',
-                              hint: 'nombre@empresa.com',
-                              icon: Icons.mail_outline,
+                              enabled: !_guardando,
                               keyboardType: TextInputType.emailAddress,
+                              autofillHints: const [AutofillHints.email],
+                              textInputAction: TextInputAction.next,
+                              decoration: authInputDecoration(
+                                'Correo electrónico',
+                                Icons.mail_outline_rounded,
+                                hint: 'nombre@correo.com',
+                              ),
                               validator: (value) {
                                 final email = value?.trim() ?? '';
-                                if (email.isEmpty)
+                                if (email.isEmpty) {
                                   return 'Escribe el correo electrónico';
+                                }
                                 if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
-                                    .hasMatch(email))
+                                    .hasMatch(email)) {
                                   return 'Escribe un correo válido';
+                                }
                                 return null;
                               },
                             );
-                            if (!twoColumns) {
+                            if (constraints.maxWidth < 570) {
                               return Column(
                                 children: [
-                                  nameField,
+                                  nombre,
                                   const SizedBox(height: 18),
-                                  emailField,
+                                  correo,
                                 ],
                               );
                             }
                             return Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(child: nameField),
+                                Expanded(child: nombre),
                                 const SizedBox(width: 18),
-                                Expanded(child: emailField),
+                                Expanded(child: correo),
                               ],
                             );
                           },
                         ),
                         const SizedBox(height: 18),
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            final twoColumns = constraints.maxWidth >= 620;
-                            final roleField = DropdownButtonFormField<String>(
-                              initialValue: _rol,
-                              decoration: _decoration(
-                                'Tipo de usuario',
-                                Icons.badge_outlined,
+                        TextFormField(
+                          controller: _password,
+                          enabled: !_guardando,
+                          obscureText: !_mostrarPassword,
+                          autocorrect: false,
+                          enableSuggestions: false,
+                          autofillHints: const [AutofillHints.newPassword],
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) => _guardar(),
+                          decoration: authInputDecoration(
+                            'Contraseña',
+                            Icons.lock_outline_rounded,
+                            hint: 'Crea una contraseña segura',
+                            suffixIcon: IconButton(
+                              tooltip: _mostrarPassword
+                                  ? 'Ocultar contraseña'
+                                  : 'Mostrar contraseña',
+                              onPressed: () => setState(
+                                () => _mostrarPassword = !_mostrarPassword,
                               ),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'pyme',
-                                  child: Text('PYME'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'inversionista',
-                                  child: Text('Inversionista'),
-                                ),
-                              ],
-                              onChanged: (value) =>
-                                  setState(() => _rol = value ?? 'pyme'),
-                            );
-                            final passwordField = _field(
-                              controller: _password,
-                              label: 'Contraseña',
-                              hint: 'Crea una contraseña segura',
-                              icon: Icons.lock_outline,
-                              obscureText: !_mostrarPassword,
-                              suffixIcon: IconButton(
-                                tooltip: _mostrarPassword
-                                    ? 'Ocultar contraseña'
-                                    : 'Mostrar contraseña',
-                                onPressed: () => setState(
-                                  () => _mostrarPassword = !_mostrarPassword,
-                                ),
-                                icon: Icon(
-                                  _mostrarPassword
-                                      ? Icons.visibility_off_outlined
-                                      : Icons.visibility_outlined,
-                                ),
-                              ),
-                              validator: (value) {
-                                final password = value ?? '';
-                                if (password.length < 12)
-                                  return 'Usa al menos 12 caracteres';
-                                final categories = [
-                                  RegExp(r'[a-z]').hasMatch(password),
-                                  RegExp(r'[A-Z]').hasMatch(password),
-                                  RegExp(r'[0-9]').hasMatch(password),
-                                  RegExp(r'[^A-Za-z0-9\s]').hasMatch(password),
-                                ].where((item) => item).length;
-                                if (categories < 3)
-                                  return 'Combina 3 tipos: mayúsculas, minúsculas, números o símbolos';
-                                return null;
-                              },
-                            );
-                            if (!twoColumns)
-                              return Column(
-                                children: [
-                                  roleField,
-                                  const SizedBox(height: 18),
-                                  passwordField,
-                                ],
-                              );
-                            return Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(child: roleField),
-                                const SizedBox(width: 18),
-                                Expanded(child: passwordField),
-                              ],
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 28),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 54,
-                          child: FilledButton.icon(
-                            onPressed: _guardando ? null : _guardar,
-                            icon: const Icon(Icons.person_add_alt_1),
-                            label: Text(
-                              _guardando ? 'Creando cuenta...' : 'Crear cuenta',
-                              style: const TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF176B68),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(13),
+                              icon: Icon(
+                                _mostrarPassword
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                                size: 20,
                               ),
                             ),
                           ),
+                          validator: (value) {
+                            final password = value ?? '';
+                            if (password.length < 12) {
+                              return 'Usa al menos 12 caracteres';
+                            }
+                            final categories = [
+                              RegExp(r'[a-z]').hasMatch(password),
+                              RegExp(r'[A-Z]').hasMatch(password),
+                              RegExp(r'[0-9]').hasMatch(password),
+                              RegExp(r'[^A-Za-z0-9\s]').hasMatch(password),
+                            ].where((item) => item).length;
+                            if (categories < 3) {
+                              return 'Combina 3 tipos: mayúsculas, minúsculas, números o símbolos';
+                            }
+                            return null;
+                          },
                         ),
-                        const SizedBox(height: 14),
-                        const Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(
-                              Icons.info_outline,
-                              size: 18,
-                              color: Color(0xFF65758B),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'Usa 12 caracteres o más y combina al menos tres tipos: mayúsculas, minúsculas, números o símbolos.',
+                          style: TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 12,
+                            height: 1.5,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        DropdownButtonFormField<String>(
+                          initialValue: _rol,
+                          isExpanded: true,
+                          decoration: authInputDecoration(
+                            'Tipo de usuario',
+                            Icons.badge_outlined,
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'pyme',
+                              child: Text('PYME'),
                             ),
-                            SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'La contraseña debe tener 12 caracteres o más y combinar al menos tres tipos de caracteres.',
-                                style: TextStyle(
-                                  color: Color(0xFF65758B),
-                                  height: 1.4,
-                                ),
-                              ),
+                            DropdownMenuItem(
+                              value: 'inversionista',
+                              child: Text('Inversionista'),
                             ),
                           ],
+                          onChanged: _guardando
+                              ? null
+                              : (value) =>
+                                  setState(() => _rol = value ?? 'pyme'),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          _rol == 'pyme'
+                              ? 'Para empresas que buscan nuevas oportunidades de financiamiento.'
+                              : 'Para personas que quieren impulsar el crecimiento de empresas.',
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 12,
+                            height: 1.5,
+                          ),
+                        ),
+                        const SizedBox(height: 28),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 52),
+                          child: FilledButton(
+                            onPressed: _guardando ? null : _guardar,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    _guardando
+                                        ? 'Creando cuenta...'
+                                        : 'Crear cuenta',
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                const Icon(Icons.arrow_forward_rounded,
+                                    size: 19),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     ),
                   ),
                 ),
+              ),
+              const SizedBox(height: 20),
+              const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.spa_outlined,
+                    color: AppColors.primary,
+                    size: 18,
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'El primer paso de una historia que crece contigo.',
+                      style: TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 12,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -295,78 +344,3 @@ class _RegistroUsuarioScreenState extends State<RegistroUsuarioScreen> {
     );
   }
 }
-
-class _SectionEyebrow extends StatelessWidget {
-  const _SectionEyebrow({required this.icon, required this.label});
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-    decoration: BoxDecoration(
-      color: const Color(0xFFE7F3F1),
-      borderRadius: BorderRadius.circular(30),
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 16, color: const Color(0xFF176B68)),
-        const SizedBox(width: 7),
-        Text(
-          label,
-          style: const TextStyle(
-            color: Color(0xFF176B68),
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1,
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-Widget _field({
-  required TextEditingController controller,
-  required String label,
-  required String hint,
-  required IconData icon,
-  required String? Function(String?) validator,
-  TextInputType? keyboardType,
-  bool obscureText = false,
-  Widget? suffixIcon,
-}) => TextFormField(
-  controller: controller,
-  keyboardType: keyboardType,
-  obscureText: obscureText,
-  validator: validator,
-  decoration: _decoration(label, icon, hint: hint, suffixIcon: suffixIcon),
-);
-
-InputDecoration _decoration(
-  String label,
-  IconData icon, {
-  String? hint,
-  Widget? suffixIcon,
-}) => InputDecoration(
-  labelText: label,
-  hintText: hint,
-  prefixIcon: Icon(icon, size: 20),
-  suffixIcon: suffixIcon,
-  filled: true,
-  fillColor: const Color(0xFFFAFBFD),
-  border: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(13),
-    borderSide: const BorderSide(color: Color(0xFFDCE3EC)),
-  ),
-  enabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(13),
-    borderSide: const BorderSide(color: Color(0xFFDCE3EC)),
-  ),
-  focusedBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(13),
-    borderSide: const BorderSide(color: Color(0xFF176B68), width: 1.6),
-  ),
-  errorMaxLines: 2,
-);
