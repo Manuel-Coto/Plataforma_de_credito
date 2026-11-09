@@ -1,0 +1,49 @@
+services:
+  couchdb:
+    image: couchdb:3
+    container_name: credito_couchdb
+    restart: unless-stopped
+
+    environment:
+      COUCHDB_USER: ${COUCHDB_USERNAME}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
+
+    ports:
+      - "5984:5984"
+
+    volumes:
+      - couchdb_data:/opt/couchdb/data
+
+    networks:
+      - credito_network
+
+  backend:
+    build:
+      context: ..                     # raíz del repo
+      dockerfile: docker/Dockerfile   # ruta relativa al contexto
+
+    container_name: credito_backend
+    restart: unless-stopped
+
+    depends_on:
+      - couchdb
+
+    environment:
+      COUCHDB_URL: http://couchdb:5984
+      COUCHDB_USERNAME: ${COUCHDB_USERNAME}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_TTL_SECONDS: ${JWT_TTL_SECONDS:-3600}
+
+    ports:
+      - "3000:3000"
+
+    networks:
+      - credito_network
+
+volumes:
+  couchdb_data:
+
+networks:
+  credito_network:
+    driver: bridge

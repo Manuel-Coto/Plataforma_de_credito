@@ -57,11 +57,11 @@ async fn main() {
 
     let app = build_app(db.as_ref()).await;
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
         .await
         .expect("No se pudo iniciar el servidor");
 
-    println!("API en http://127.0.0.1:3000");
+    println!("API escuchando en 0.0.0.0:3000");
 
     axum::serve(listener, app).await.expect("Fallo de servidor");
 }
