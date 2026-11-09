@@ -21,6 +21,11 @@ pub fn router(service: UsuarioService) -> Router {
         .route("/api/auth/register", post(handler::register))
         .route("/api/auth/login", post(handler::login))
         .route("/api/usuarios/me", get(handler::me).put(handler::update))
+        .route("/api/usuarios", get(handler::list_users))
+        .route(
+            "/api/usuarios/{id}",
+            get(handler::get_user).patch(handler::update_permissions),
+        )
         .layer(DefaultBodyLimit::max(16 * 1024))
         .layer(middleware::from_fn(no_store))
         .with_state(service)

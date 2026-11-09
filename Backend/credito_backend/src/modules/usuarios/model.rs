@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -39,6 +40,27 @@ pub struct ProfileInput {
     pub nombre: String,
 }
 
+#[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UsuariosQuery {
+    pub limit: Option<u32>,
+    pub bookmark: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PermisosInput {
+    pub rol: Rol,
+    pub estado: EstadoUsuario,
+}
+
+#[derive(Serialize)]
+pub struct UsuariosPagina {
+    pub usuarios: Vec<Usuario>,
+    pub bookmark: String,
+    pub limit: u32,
+}
+
 // No deriva Debug: evita mostrar hashes accidentalmente en diagnósticos.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct UsuarioDocumento {
@@ -53,10 +75,13 @@ pub struct UsuarioDocumento {
     pub estado: EstadoUsuario,
     pub fecha_creacion: DateTime<Utc>,
     pub fecha_actualizacion: DateTime<Utc>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Usuario {
+    #[serde(alias = "_id")]
     pub id: String,
     pub nombre: String,
     pub correo: String,

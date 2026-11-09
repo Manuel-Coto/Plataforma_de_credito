@@ -4,6 +4,9 @@ pub mod repository;
 pub mod routes;
 pub mod service;
 
+#[cfg(test)]
+mod tests;
+
 use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde_json::json;
 

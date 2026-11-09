@@ -3,7 +3,7 @@ use axum::{
         rejection::{JsonRejection, QueryRejection},
         Query, State,
     },
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     Json,
 };
 
@@ -12,7 +12,7 @@ use crate::modules::usuarios::auth::AuthenticatedUser;
 use super::{
     model::{
         CrearInversion, CrearOferta, Inversion, InversionPagina, ListarOfertas, Oferta,
-        OfertaPagina,
+        OfertaPagina, RecuperacionPagina, RecuperarInversiones,
     },
     service::InversionService,
     InversionError,
@@ -44,11 +44,19 @@ pub async fn listar_ofertas(
 pub async fn invertir(
     State(service): State<InversionService>,
     user: AuthenticatedUser,
+    headers: HeaderMap,
     body: Result<Json<CrearInversion>, JsonRejection>,
 ) -> Result<(StatusCode, Json<Inversion>), InversionError> {
     let Json(input) = body.map_err(|_| InversionError::Invalid("JSON de inversión inválido"))?;
-
-    let inversion = service.invertir(&user.0, input).await?;
+    let mut keys = headers.get_all("idempotency-key").iter();
+    let key = keys
+        .next()
+        .and_then(|value| value.to_str().ok())
+        .ok_or(InversionError::Invalid("Idempotency-Key es obligatorio"))?;
+    if keys.next().is_some() {
+        return Err(InversionError::Invalid("Envía una sola Idempotency-Key"));
+    }
+    let inversion = service.invertir(&user.0, input, key).await?;
 
     Ok((StatusCode::CREATED, Json(inversion)))
 }
@@ -66,4 +74,14 @@ pub async fn listar_mis_inversiones(
             .listar_mis_inversiones(&user.0, query.limit, query.bookmark)
             .await?,
     ))
+}
+
+pub async fn recuperar(
+    State(service): State<InversionService>,
+    user: AuthenticatedUser,
+    query: Result<Query<RecuperarInversiones>, QueryRejection>,
+) -> Result<Json<RecuperacionPagina>, InversionError> {
+    let Query(query) =
+        query.map_err(|_| InversionError::Invalid("Parámetros de recuperación inválidos"))?;
+    Ok(Json(service.recuperar(&user.0, query).await?))
 }

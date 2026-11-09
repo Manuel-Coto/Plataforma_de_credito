@@ -143,6 +143,7 @@ impl FacturaRepository {
         bookmark: Option<String>,
         estado: Option<super::model::EstadoFactura>,
         owner: Option<&str>,
+        investor: Option<&str>,
     ) -> Result<(Vec<FacturaDocumento>, String), FacturaError> {
         let mut selector = json!({"tipo":"factura"});
         if let Some(owner) = owner {
@@ -151,6 +152,13 @@ impl FacturaRepository {
         if let Some(estado) = estado {
             selector["estado"] =
                 serde_json::to_value(estado).map_err(|_| FacturaError::Upstream)?;
+        }
+        if let Some(actor) = investor {
+            // Apply visibility before pagination, otherwise hidden documents consume pages.
+            selector["$or"] = json!([
+                {"creado_por": actor},
+                {"estado": {"$in": ["disponible", "parcialmente_financiada", "financiada"]}}
+            ]);
         }
         let mut body = json!({"selector":selector,"limit":limit});
         if let Some(b) = bookmark {

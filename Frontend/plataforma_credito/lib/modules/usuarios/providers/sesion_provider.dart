@@ -11,15 +11,19 @@ class SesionProvider extends ChangeNotifier {
   final ApiClient api;
   Map<String, dynamic>? _usuario;
   Timer? _temporizador;
+  DateTime? _vence;
   int _version = 0;
   bool _ocupado = false;
   bool _disposed = false;
+  bool _guardandoPerfil = false;
+  int _solicitudPerfil = 0;
   String? mensaje;
 
   Map<String, dynamic>? get usuario => _usuario;
   bool get autenticado => _usuario != null;
   bool get ocupado => _ocupado;
   int get version => _version;
+  bool get guardandoPerfil => _guardandoPerfil;
 
   Future<void> ingresar(String correo, String password) async {
     if (_ocupado) return;
@@ -50,12 +54,20 @@ class SesionProvider extends ChangeNotifier {
           perfil['estado'] != 'activo') {
         throw ApiException('El servidor no devolvió una cuenta activa válida.');
       }
+      final vence = DateTime.now()
+          .toUtc()
+          .add(Duration(seconds: datos['expires_in'] as int));
+      await api.iniciarSesionOffline(
+          userId: perfil['id'] as String,
+          role: perfil['rol'] as String,
+          expiresAt: vence);
+      if (_disposed || versionInicial != _version) return;
       api.token = datos['access_token'] as String;
+      _vence = vence;
       _usuario = Map.unmodifiable(perfil);
       _version++;
       _temporizador?.cancel();
-      _temporizador =
-          Timer(Duration(seconds: datos['expires_in'] as int), expirar);
+      _temporizador = Timer(vence.difference(DateTime.now().toUtc()), expirar);
     } finally {
       if (!_disposed) {
         _ocupado = false;
@@ -68,6 +80,76 @@ class SesionProvider extends ChangeNotifier {
     await api.post('/api/auth/register', datos);
   }
 
+  Future<void> actualizarPerfil(String nombre) async {
+    if (_disposed || !autenticado) return;
+    if (_guardandoPerfil) {
+      throw ApiException(
+          'Ya se está guardando tu perfil. Espera a que termine antes de volver a intentarlo.');
+    }
+    final limpio = nombre.trim();
+    if (limpio.isEmpty || limpio.length > 250) {
+      throw ApiException('Escribe un nombre de entre 1 y 250 caracteres.');
+    }
+    final solicitud = ++_solicitudPerfil;
+    final versionInicial = _version;
+    final id = _usuario!['id'];
+    final token = api.token;
+    _guardandoPerfil = true;
+    notifyListeners();
+    try {
+      final respuesta = await api.put('/api/usuarios/me', {'nombre': limpio});
+      if (_disposed ||
+          solicitud != _solicitudPerfil ||
+          _version != versionInicial ||
+          api.token != token ||
+          _usuario?['id'] != id) {
+        return;
+      }
+      if (respuesta is! Map<String, dynamic> ||
+          respuesta['id'] != id ||
+          respuesta['nombre'] is! String ||
+          (respuesta['nombre'] as String).trim().isEmpty ||
+          respuesta['correo'] != _usuario!['correo'] ||
+          !const ['pyme', 'inversionista', 'administrador']
+              .contains(respuesta['rol']) ||
+          respuesta['estado'] != 'activo') {
+        throw ApiException('El servidor devolvió un perfil inválido.');
+      }
+      // El nombre conserva la navegación; un cambio de rol invalida datos y
+      // rutas que pudieron haberse cargado con los permisos anteriores.
+      if (respuesta['rol'] != _usuario!['rol']) {
+        api.offline.endSession();
+        await api.iniciarSesionOffline(
+            userId: id as String,
+            role: respuesta['rol'] as String,
+            expiresAt: _vence ?? DateTime.now().toUtc());
+        if (_disposed ||
+            solicitud != _solicitudPerfil ||
+            _version != versionInicial ||
+            api.token != token ||
+            _usuario?['id'] != id) {
+          return;
+        }
+        _version++;
+      }
+      _usuario = Map.unmodifiable(respuesta);
+    } catch (_) {
+      if (_disposed ||
+          solicitud != _solicitudPerfil ||
+          _version != versionInicial ||
+          api.token != token ||
+          _usuario?['id'] != id) {
+        return;
+      }
+      rethrow;
+    } finally {
+      if (!_disposed && solicitud == _solicitudPerfil) {
+        _guardandoPerfil = false;
+        notifyListeners();
+      }
+    }
+  }
+
   void expirar() {
     if (!autenticado || _disposed) return;
     cerrar(motivo: 'Tu sesión terminó. Inicia sesión nuevamente.');
@@ -75,10 +157,13 @@ class SesionProvider extends ChangeNotifier {
 
   void cerrar({String? motivo}) {
     _temporizador?.cancel();
-    api.token = null;
+    _vence = null;
+    api.terminarSesionOffline();
     _usuario = null;
     mensaje = motivo;
     _version++;
+    _solicitudPerfil++;
+    _guardandoPerfil = false;
     notifyListeners();
   }
 
@@ -87,7 +172,7 @@ class SesionProvider extends ChangeNotifier {
     _disposed = true;
     _temporizador?.cancel();
     api.onUnauthorized = null;
-    api.token = null;
+    _vence = null;
     api.close();
     super.dispose();
   }

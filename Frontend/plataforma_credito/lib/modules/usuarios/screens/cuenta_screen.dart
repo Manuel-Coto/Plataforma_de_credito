@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../../core/theme/credito_theme.dart';
 import '../../../widgets/page_header.dart';
+import '../../../widgets/session_actions.dart';
+import '../../../services/api_exception.dart';
 import '../providers/sesion_provider.dart';
 
 class CuentaScreen extends StatelessWidget {
@@ -32,20 +34,28 @@ class CuentaScreen extends StatelessWidget {
                 const PageHeader(
                   eyebrow: 'UN NUEVO DÍA, NUEVAS POSIBILIDADES',
                   title: 'Mi cuenta',
-                  subtitle:
-                      'Tu empresa y tus próximos pasos, en un solo lugar.',
+                  subtitle: 'Tu perfil y tus próximos pasos, en un solo lugar.',
                 ),
                 const SizedBox(height: 26),
-                _WelcomeBanner(onNavigate: onNavigate),
+                _WelcomeBanner(
+                    onNavigate: onNavigate,
+                    admin: usuario['rol'] == 'administrador',
+                    inversionista: usuario['rol'] == 'inversionista'),
                 const SizedBox(height: 30),
                 LayoutBuilder(builder: (context, constraints) {
                   final profile = _ProfileCard(
                     nombre: usuario['nombre'] as String,
                     correo: usuario['correo'] as String,
                     rol: rol,
-                    onLogout: sesion.cerrar,
+                    onLogout: () => confirmarCierreSesion(context, sesion),
+                    onEdit: () => showDialog<bool>(
+                        context: context,
+                        barrierDismissible: false,
+                        builder: (_) => _EditarPerfilDialog(
+                            nombre: usuario['nombre'] as String)),
                   );
-                  final shortcuts = _NextSteps(onNavigate: onNavigate);
+                  final shortcuts = _NextSteps(
+                      onNavigate: onNavigate, rol: usuario['rol'] as String);
                   if (constraints.maxWidth < 790) {
                     return Column(children: [
                       profile,
@@ -72,7 +82,10 @@ class CuentaScreen extends StatelessWidget {
 }
 
 class _WelcomeBanner extends StatelessWidget {
-  const _WelcomeBanner({this.onNavigate});
+  const _WelcomeBanner(
+      {this.onNavigate, this.admin = false, this.inversionista = false});
+  final bool admin;
+  final bool inversionista;
   final ValueChanged<int>? onNavigate;
 
   @override
@@ -98,7 +111,12 @@ class _WelcomeBanner extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                             letterSpacing: 1.6)),
                     const SizedBox(height: 15),
-                    Text('Dale espacio al futuro\nde tu empresa.',
+                    Text(
+                        admin
+                            ? 'Cada empresa merece\nuna revisión clara.'
+                            : inversionista
+                                ? 'Conecta tus metas\ncon nuevas oportunidades.'
+                                : 'Dale espacio al futuro\nde tu empresa.',
                         style: TextStyle(
                             color: AppColors.onPrimary,
                             fontSize: wide ? 34 : 28,
@@ -108,9 +126,13 @@ class _WelcomeBanner extends StatelessWidget {
                     const SizedBox(height: 15),
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 480),
-                      child: const Text(
-                        'Registra tu empresa, organiza tus facturas y sigue cada paso de tus operaciones con claridad.',
-                        style: TextStyle(
+                      child: Text(
+                        admin
+                            ? 'Consulta las empresas registradas y aprueba o rechaza las solicitudes pendientes.'
+                            : inversionista
+                                ? 'Explora las ofertas disponibles y consulta el avance de tus aportes y créditos.'
+                                : 'Registra tu empresa, organiza tus facturas y sigue cada paso de tus operaciones con claridad.',
+                        style: const TextStyle(
                             color: AppColors.onPrimaryMuted,
                             height: 1.6,
                             fontSize: 14),
@@ -119,12 +141,20 @@ class _WelcomeBanner extends StatelessWidget {
                     if (onNavigate != null) ...[
                       const SizedBox(height: 26),
                       FilledButton.icon(
-                        onPressed: () => onNavigate!(1),
+                        onPressed: () => onNavigate!(inversionista ? 5 : 1),
                         style: FilledButton.styleFrom(
                             backgroundColor: AppColors.accent,
                             foregroundColor: AppColors.primary),
-                        icon: const Icon(Icons.add_business_outlined, size: 19),
-                        label: const Text('Registrar mi empresa'),
+                        icon: Icon(
+                            inversionista
+                                ? Icons.trending_up_rounded
+                                : Icons.add_business_outlined,
+                            size: 19),
+                        label: Text(admin
+                            ? 'Revisar empresas'
+                            : inversionista
+                                ? 'Explorar inversiones'
+                                : 'Registrar mi empresa'),
                       ),
                     ],
                   ],
@@ -212,11 +242,13 @@ class _ProfileCard extends StatelessWidget {
       {required this.nombre,
       required this.correo,
       required this.rol,
+      required this.onEdit,
       required this.onLogout});
   final String nombre;
   final String correo;
   final String rol;
   final VoidCallback onLogout;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -273,6 +305,11 @@ class _ProfileCard extends StatelessWidget {
               style: TextStyle(color: AppColors.primary, fontSize: 13)),
         ]),
         const SizedBox(height: 20),
+        OutlinedButton.icon(
+            onPressed: onEdit,
+            icon: const Icon(Icons.edit_outlined, size: 18),
+            label: const Text('Editar perfil')),
+        const SizedBox(height: 8),
         TextButton.icon(
           onPressed: onLogout,
           icon: const Icon(Icons.logout_rounded, size: 17),
@@ -283,9 +320,98 @@ class _ProfileCard extends StatelessWidget {
   }
 }
 
+class _EditarPerfilDialog extends StatefulWidget {
+  const _EditarPerfilDialog({required this.nombre});
+  final String nombre;
+
+  @override
+  State<_EditarPerfilDialog> createState() => _EditarPerfilDialogState();
+}
+
+class _EditarPerfilDialogState extends State<_EditarPerfilDialog> {
+  final _form = GlobalKey<FormState>();
+  late final TextEditingController _nombre =
+      TextEditingController(text: widget.nombre);
+  bool _guardando = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _nombre.dispose();
+    super.dispose();
+  }
+
+  Future<void> _guardar() async {
+    if (_guardando || !_form.currentState!.validate()) return;
+    setState(() {
+      _guardando = true;
+      _error = null;
+    });
+    try {
+      final messenger = ScaffoldMessenger.of(context);
+      await context.read<SesionProvider>().actualizarPerfil(_nombre.text);
+      if (!mounted) return;
+      Navigator.pop(context, true);
+      messenger
+          .showSnackBar(const SnackBar(content: Text('Perfil actualizado.')));
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } catch (_) {
+      if (mounted) {
+        setState(() =>
+            _error = 'No se pudo actualizar el perfil. Intenta nuevamente.');
+      }
+    } finally {
+      if (mounted) setState(() => _guardando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+      canPop: !_guardando,
+      child: AlertDialog(
+        scrollable: true,
+        title: const Text('Editar perfil'),
+        content: SizedBox(
+            width: 420,
+            child: Form(
+                key: _form,
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const Text('Actualiza el nombre que aparece en tu cuenta.'),
+                  const SizedBox(height: 20),
+                  TextFormField(
+                      controller: _nombre,
+                      enabled: !_guardando,
+                      maxLength: 250,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                          labelText: 'Nombre completo',
+                          prefixIcon: Icon(Icons.person_outline)),
+                      validator: (value) => (value?.trim().isEmpty ?? true)
+                          ? 'Escribe tu nombre'
+                          : null,
+                      onFieldSubmitted: (_) => _guardar()),
+                  if (_error != null)
+                    Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Text(_error!,
+                            style: const TextStyle(color: AppColors.error))),
+                ]))),
+        actions: [
+          TextButton(
+              onPressed: _guardando ? null : () => Navigator.pop(context),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: _guardando ? null : _guardar,
+              child: Text(_guardando ? 'Guardando...' : 'Guardar nombre')),
+        ],
+      ));
+}
+
 class _NextSteps extends StatelessWidget {
-  const _NextSteps({this.onNavigate});
+  const _NextSteps({this.onNavigate, required this.rol});
   final ValueChanged<int>? onNavigate;
+  final String rol;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -297,17 +423,32 @@ class _NextSteps extends StatelessWidget {
           const Text('Elige por dónde quieres continuar.',
               style: TextStyle(color: AppColors.muted)),
           const SizedBox(height: 21),
-          _shortcut(Icons.business_outlined, 'Dale un lugar a tu empresa',
-              'Completa sus datos y envíalos a revisión.', 1),
-          const SizedBox(height: 12),
-          _shortcut(Icons.receipt_long_outlined, 'Organiza tus facturas',
-              'Consulta documentos, montos y vencimientos.', 2),
+          if (rol != 'inversionista') ...[
+            _shortcut(Icons.business_outlined, 'Gestión de empresas',
+                'Accede a las opciones disponibles para tu cuenta.', 1),
+            const SizedBox(height: 12),
+            _shortcut(Icons.receipt_long_outlined, 'Organiza tus facturas',
+                'Consulta documentos, montos y vencimientos.', 2),
+            const SizedBox(height: 12),
+          ],
+          _shortcut(
+              Icons.trending_up_rounded,
+              rol == 'inversionista'
+                  ? 'Explora tus inversiones'
+                  : 'Ofertas e inversiones',
+              'Consulta las ofertas y el avance de los aportes.',
+              5),
           const SizedBox(height: 12),
           _shortcut(
               Icons.account_balance_wallet_outlined,
               'Sigue tus operaciones',
               'Revisa el estado de tus créditos y pagos.',
               3),
+          if (rol == 'administrador') ...[
+            const SizedBox(height: 12),
+            _shortcut(Icons.admin_panel_settings_outlined, 'Administración',
+                'Consulta indicadores, usuarios, reportes y auditoría.', 4),
+          ],
         ],
       );
 

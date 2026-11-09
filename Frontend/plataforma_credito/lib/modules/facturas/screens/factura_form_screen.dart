@@ -73,6 +73,7 @@ class _FacturaFormScreenState extends State<FacturaFormScreen> {
   }
 
   Future<void> _guardar() async {
+    if (_enviando) return;
     // validate() ejecuta el validator de cada campo; false si alguno falla.
     if (!_formKey.currentState!.validate()) return;
 
@@ -83,18 +84,24 @@ class _FacturaFormScreenState extends State<FacturaFormScreen> {
 
     try {
       await context.read<FacturasProvider>().crear(
-        CrearFactura(
-          empresaId: _empresa!.id,
-          numero: _numero.text.trim(),
-          codigoGeneracion: _codigo.text.trim(),
-          moneda: 'USD',
-          montoTotalCentavos: _aCentavos(_monto.text)!,
-          fechaEmision: _fechaEmision!,
-          fechaVencimiento: _fechaVencimiento!,
-        ),
-      );
+            CrearFactura(
+              empresaId: _empresa!.id,
+              numero: _numero.text.trim(),
+              codigoGeneracion: _codigo.text.trim(),
+              moneda: 'USD',
+              montoTotalCentavos: _aCentavos(_monto.text)!,
+              fechaEmision: _fechaEmision!,
+              fechaVencimiento: _fechaVencimiento!,
+            ),
+          );
       if (!mounted) return;
       Navigator.pop(context); // volver a la lista
+    } on OfflineQueuedException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Factura guardada en este equipo. Envíala desde Sincronización cuando vuelva la conexión.')));
+      Navigator.pop(context);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -130,7 +137,7 @@ class _FacturaFormScreenState extends State<FacturaFormScreen> {
                 padding: EdgeInsets.all(24),
                 child: Text(
                   'No tienes empresas activas. Un administrador debe '
-                      'aprobar tu empresa antes de registrar facturas.',
+                  'aprobar tu empresa antes de registrar facturas.',
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -193,7 +200,7 @@ class _FacturaFormScreenState extends State<FacturaFormScreen> {
               TextFormField(
                 controller: _monto,
                 keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
+                    const TextInputType.numberWithOptions(decimal: true),
                 decoration: const InputDecoration(
                   labelText: 'Monto total (USD)',
                   helperText: 'Ejemplo: 2500.50',
@@ -217,7 +224,7 @@ class _FacturaFormScreenState extends State<FacturaFormScreen> {
                   alElegir: (f) => _fechaEmision = f,
                 ),
                 validator: (_) =>
-                _fechaEmision == null ? 'Elige la fecha de emisión' : null,
+                    _fechaEmision == null ? 'Elige la fecha de emisión' : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -255,10 +262,10 @@ class _FacturaFormScreenState extends State<FacturaFormScreen> {
                 onPressed: _enviando ? null : _guardar,
                 child: _enviando
                     ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Text('Registrar factura'),
               ),
             ],

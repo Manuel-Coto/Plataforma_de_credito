@@ -21,6 +21,8 @@ pub enum UsuarioError {
     Duplicate,
     NotFound,
     Conflict,
+    PreconditionRequired,
+    PreconditionFailed,
     Unavailable,
     Upstream,
     Internal,
@@ -42,6 +44,14 @@ impl IntoResponse for UsuarioError {
             Self::Conflict => (
                 StatusCode::CONFLICT,
                 "Conflicto de revisión; consulte su perfil y reintente",
+            ),
+            Self::PreconditionRequired => (
+                StatusCode::PRECONDITION_REQUIRED,
+                "Consulte el usuario y envíe su ETag en If-Match",
+            ),
+            Self::PreconditionFailed => (
+                StatusCode::PRECONDITION_FAILED,
+                "El usuario cambió; actualice sus datos antes de guardar",
             ),
             Self::Unavailable => (
                 StatusCode::SERVICE_UNAVAILABLE,

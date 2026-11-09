@@ -1,94 +1,59 @@
-# Frontend de los módulos 5 y 6
+# Frontend de Créditos y Administración
 
-Plataforma de Crédito Colaborativo, Proyecto 2.
-Módulo 5: Créditos, operaciones y pagos. Módulo 6: Administración y reportes.
-Tecnología: Flutter / Dart. Rama de trabajo: `feature/frontend-creditos-admin`.
+Flutter consume el backend Rust mediante `ApiClient`. La dirección local está en `Frontend/plataforma_credito/lib/core/config/api_config.dart`: `http://127.0.0.1:3000`. Las solicitudes protegidas envían el token de la sesión en `Authorization: Bearer ...`.
 
-## 1. Propósito
+## Créditos y pagos simulados
 
-Mostrar al usuario el seguimiento de las operaciones de crédito con sus pagos simulados (módulo 5) y ofrecer al administrador un panel con indicadores generales (módulo 6).
+- `GET /api/creditos` devuelve `{ "creditos": [...], "bookmark": "...", "limit": 20 }`.
+- Cada crédito publica `capital_centavos`, `interes_centavos`, `total_centavos`, `pagado_centavos` y `saldo_centavos`. Todos son enteros en centavos.
+- El monto mostrado es `total_centavos`. El avance se calcula con `pagado_centavos / total_centavos`, usando los totales del servidor.
+- `estado` es `activo` o `pagado`. Si `vencido` es verdadero, la interfaz lo muestra como Vencido y permite filtrar esa vista. El cliente no vuelve a calcular la mora con su reloj local.
+- Cada pago registrado contiene `id`, `referencia`, `monto_centavos`, `registrado_por` y `fecha`. El contrato no contiene un campo `estado` del pago.
+- El historial `pagos` se omite para inversionistas. Esto no cambia los importes agregados del crédito. La interfaz diferencia historial no compartido de historial vacío.
+- Un formato incompatible muestra un error en lugar de sustituir datos ausentes por ceros.
 
-El frontend no se conecta a CouchDB. Todos los datos se solicitan al backend en Rust por HTTP/JSON, que aplica las reglas de negocio y los permisos.
+Contrato completo: [API de Créditos](../api/creditos.md).
 
-## 2. Pantallas
+## Panel de administración
 
-| Módulo | Pantalla | Archivo | Qué muestra |
-|---|---|---|---|
-| 5 | Créditos y pagos | `lib/modules/creditos/screens/operaciones_screen.dart` | Listado de operaciones con filtro por estado y barra de progreso de pago |
-| 5 | Detalle de operación | `lib/modules/creditos/screens/operacion_detalle_screen.dart` | Monto, estado, vencimiento, total pagado e historial de pagos simulados |
-| 6 | Panel de administración | `lib/modules/administracion/screens/dashboard_screen.dart` | Indicadores (operaciones, monto total, empresas verificadas, facturas pendientes) y operaciones por estado |
+`GET /api/administracion/resumen` devuelve `generado_en` y ocho `reportes`: usuarios, empresas, facturas, ofertas, inversiones, creditos, pagos y auditoria. Cada reporte incluye `modulo`, `total`, `por_estado`, `por_rol` y `montos_por_moneda`.
 
-## 3. Estructura de archivos
+Los indicadores se obtienen así:
 
-```
-lib/
-  core/format.dart                      Formato de dinero, fechas y estados
-  models/operacion.dart                 Modelos Operacion y Pago
-  models/resumen.dart                   Modelo Resumen del panel
-  services/api_client.dart              Cliente HTTP hacia el backend
-  modules/creditos/providers/           OperacionesProvider
-  modules/creditos/screens/             Listado y detalle
-  modules/administracion/providers/     ReportesProvider
-  modules/administracion/screens/       Panel
-  main_prueba.dart                      Punto de entrada solo para pruebas
-```
+| Indicador | Fuente |
+|---|---|
+| Créditos | `creditos.total` |
+| Total de créditos | `creditos.montos_por_moneda[moneda].total_centavos`, separado por moneda |
+| Empresas verificadas | `empresas.por_estado.activa` |
+| Facturas pendientes | `facturas.por_estado.pendiente_verificacion` |
+| Distribución por estado | `creditos.por_estado` |
 
-Gestión de estado: `provider`. Navegación: `go_router`. Formato: `intl`. Peticiones: `http`.
+Los reportes de bases vacías tienen `total: 0` y mapas vacíos. Una respuesta incompleta o con el formato plano antiguo se rechaza; no representa un resumen vacío válido. Los importes de monedas diferentes nunca se suman en un único indicador.
 
-## 4. Endpoints que consume
+Contrato completo y permisos: [API de Administración](../api/administracion.md).
 
-| Método | Ruta | Pantalla |
-|---|---|---|
-| GET | `/api/operaciones` | Listado y detalle de operaciones |
-| GET | `/api/reportes/resumen` | Panel de administración |
+## Verificación
 
-La dirección del backend se define en `ApiClient` (por defecto `http://127.0.0.1:8080`). El token de autenticación, cuando exista el módulo 1, se asigna en `ApiClient.token` y se envía como `Authorization: Bearer`.
+Desde `Frontend/plataforma_credito`:
 
-## 5. Formato JSON esperado (supuesto, por confirmar con el backend)
-
-`GET /api/operaciones` devuelve una lista:
-
-```json
-[{
-  "_id": "operacion_001",
-  "factura_id": "factura_001",
-  "monto_centavos": 200000,
-  "moneda": "USD",
-  "estado": "activa",
-  "fecha_vencimiento": "2026-12-15",
-  "pagos": [{ "_id": "pago_001", "monto_centavos": 50000, "fecha": "2026-11-01", "estado": "pagado" }]
-}]
+```powershell
+flutter analyze --no-pub
+flutter test --no-pub
+flutter run -d windows
 ```
 
-`GET /api/reportes/resumen` devuelve un objeto:
+`test/fixtures/api/` contiene respuestas ficticias compartidas por las pruebas Flutter y Rust. Las pruebas de contrato del backend comprueban que la serialización real coincide con esos JSON; Flutter comprueba los importes visibles, monedas, historial restringido, formatos inválidos y respuestas pendientes de una sesión cerrada.
 
-```json
-{
-  "total_operaciones": 12,
-  "monto_total_centavos": 2400000,
-  "empresas_verificadas": 5,
-  "facturas_pendientes": 3,
-  "operaciones_por_estado": { "activa": 7, "pagada": 4, "vencida": 1 }
-}
-```
+Desde `Backend/credito_backend`, `cargo test --locked` ejecuta esas comprobaciones junto a las demás pruebas. Estas usan servicios locales ficticios; la integración con CouchDB real tiene pruebas específicas marcadas como ignoradas y debe verificarse por separado.
 
-Los montos se manejan en centavos (enteros) para evitar errores de redondeo, igual que el ejemplo de factura de la guía.
+## Acciones y páginas implementadas
 
-## 6. Cómo probarlo
+La interfaz incluye emisión administrativa de créditos desde ofertas elegibles, confirmación de aportes simulados, registro de pagos y recuperación explícita de sincronizaciones. Las referencias y claves se conservan al reintentar para no duplicar operaciones. Un resultado con sincronización pendiente sigue indicando que el cambio principal ya se guardó.
 
-```
-cd Frontend/plataforma_credito
-flutter pub get
-flutter run -d windows -t lib/main_prueba.dart
-```
+El listado de créditos conserva cursores y permite cargar más páginas; los filtros incluyen la vista derivada Vencido. Un historial omitido para inversionistas no se representa como una lista de pagos vacía ni altera los importes agregados.
 
-(En Linux, usar `-d linux`.) Sin el backend activo, las pantallas muestran el mensaje "No se pudo conectar con el servidor" con un botón para reintentar.
+El panel administrativo integra Resumen, Reportes y auditoría y Usuarios. Los reportes seleccionan uno de los ocho módulos y muestran cada moneda por separado. La auditoría permite combinar actor y recurso, recorrer cursores y consultar la fecha local del evento sin prometer orden cronológico. La gestión de usuarios confirma cambios de rol/estado y exige recargar revisiones en conflicto.
 
-## 7. Estado actual y pendientes
+Las mutaciones financieras y administrativas requieren conexión. Las instantáneas de lecturas y la cola limitada de empresas/facturas se describen en [Modo local Windows](../integracion/offline_windows.md).
 
-- Las pantallas compilan y se ejecutan; el manejo de error de conexión está verificado.
-- No se han probado con el backend real: los nombres de campo del JSON son supuestos.
-- Pendiente: conectar con los endpoints reales y ajustar los modelos al formato definido por el equipo.
-- Pendiente: auditoría y exportación de reportes (módulo 6), que aún no tienen endpoint definido.
-- Pendiente: integrar las rutas en el `main.dart` del equipo, usando `context.push` para que cada pantalla tenga botón de regreso.
-- Los pagos y operaciones son simulados; no se manejan fondos reales.
+El [recorrido con CouchDB real](../integracion/couchdb_real.md) se ejecutó en bases aisladas para verificar la integración de los seis módulos. No sustituye las pruebas de concurrencia, permisos y fallos que siguen formando parte de la suite con servidores ficticios.

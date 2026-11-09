@@ -1068,3 +1068,128 @@ fn interest_uses_actual_days_365_and_rounds_half_cents_up() {
         assert!(calcular_interes(capital, rate, days).is_err());
     }
 }
+
+// Uses the production projection and Serialize implementations with a fixed
+// clock. No database, user token, or wall-clock-derived fields enter the fixture.
+#[test]
+fn flutter_shared_credit_page_fixture_matches_real_projection() {
+    use super::{
+        model::{CreditoDocumento, CreditoPagina},
+        service::vista,
+    };
+    use crate::modules::usuarios::model::{EstadoUsuario, Rol, Usuario};
+
+    let created_at = "2026-10-01T12:00:00Z".parse().unwrap();
+    let admin = Usuario {
+        id: "usuario:admin-ficticio".into(),
+        nombre: "Administrador ficticio".into(),
+        correo: "admin@example.test".into(),
+        rol: Rol::Administrador,
+        estado: EstadoUsuario::Activo,
+        fecha_creacion: created_at,
+        fecha_actualizacion: created_at,
+    };
+    let common = json!({
+        "_id":"credito:contrato-activo", "_rev":"2-no-publica", "tipo":"credito",
+        "oferta_id":"oferta:contrato-activo", "factura_id":"factura:contrato-activa", "empresa_id":"empresa:ficticia",
+        "responsable_id":"usuario:pyme-ficticia", "inversionistas_ids":["usuario:inversor-ficticio", "usuario:otro-inversor"],
+        "moneda":"USD", "capital_centavos":100000, "interes_centavos":1000, "total_centavos":101000,
+        "pagado_centavos":40000, "tasa_anual_bp":3650, "estado":"activo", "version":2,
+        "creado_por":"usuario:admin-ficticio", "fecha_creacion":"2026-10-01T12:00:00Z",
+        "fecha_vencimiento":"2026-11-02", "fecha_pago_total":null,
+        "pagos":[{"id":"pago:contrato-01", "referencia":"CUOTA-01", "monto_centavos":40000, "registrado_por":"usuario:pyme-ficticia", "fecha":"2026-11-05T10:00:00Z"}],
+        "participaciones":[
+            {"inversion_id":"inversion:contrato-01", "inversionista_id":"usuario:inversor-ficticio", "capital_centavos":60000, "interes_centavos":600},
+            {"inversion_id":"inversion:contrato-02", "inversionista_id":"usuario:otro-inversor", "capital_centavos":40000, "interes_centavos":400}
+        ]
+    });
+    let mut paid = common.clone();
+    for (key, value) in [
+        ("_id", json!("credito:contrato-pagado")),
+        ("_rev", json!("3-no-publica")),
+        ("oferta_id", json!("oferta:contrato-pagado")),
+        ("factura_id", json!("factura:contrato-pagada")),
+        ("capital_centavos", json!(50000)),
+        ("interes_centavos", json!(2500)),
+        ("total_centavos", json!(52500)),
+        ("pagado_centavos", json!(52500)),
+        ("tasa_anual_bp", json!(1000)),
+        ("estado", json!("pagado")),
+        ("version", json!(3)),
+        ("fecha_vencimiento", json!("2026-11-01")),
+        ("fecha_pago_total", json!("2026-11-04T16:30:00Z")),
+        ("inversionistas_ids", json!(["usuario:inversor-ficticio"])),
+        (
+            "pagos",
+            json!([
+                {"id":"pago:contrato-02", "referencia":"CUOTA-02", "monto_centavos":25000, "registrado_por":"usuario:pyme-ficticia", "fecha":"2026-11-03T10:00:00Z"},
+                {"id":"pago:contrato-03", "referencia":"CUOTA-03", "monto_centavos":27500, "registrado_por":"usuario:pyme-ficticia", "fecha":"2026-11-04T16:30:00Z"}
+            ]),
+        ),
+        (
+            "participaciones",
+            json!([
+                {"inversion_id":"inversion:contrato-03", "inversionista_id":"usuario:inversor-ficticio", "capital_centavos":50000, "interes_centavos":2500}
+            ]),
+        ),
+    ] {
+        paid[key] = value;
+    }
+    let mut euro = common.clone();
+    for (key, value) in [
+        ("_id", json!("credito:contrato-eur")),
+        ("_rev", json!("1-no-publica")),
+        ("oferta_id", json!("oferta:contrato-eur")),
+        ("factura_id", json!("factura:contrato-eur")),
+        ("moneda", json!("EUR")),
+        ("capital_centavos", json!(24000)),
+        ("interes_centavos", json!(1200)),
+        ("total_centavos", json!(25200)),
+        ("pagado_centavos", json!(0)),
+        ("tasa_anual_bp", json!(1000)),
+        ("version", json!(1)),
+        ("fecha_vencimiento", json!("2026-11-20")),
+        ("inversionistas_ids", json!(["usuario:inversor-ficticio"])),
+        ("pagos", json!([])),
+        (
+            "participaciones",
+            json!([
+                {"inversion_id":"inversion:contrato-04", "inversionista_id":"usuario:inversor-ficticio", "capital_centavos":24000, "interes_centavos":1200}
+            ]),
+        ),
+    ] {
+        euro[key] = value;
+    }
+    let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 7).unwrap();
+    let creditos = [common, paid, euro]
+        .into_iter()
+        .map(|document| {
+            let document: CreditoDocumento = serde_json::from_value(document).unwrap();
+            vista(&admin, document, today)
+        })
+        .collect();
+    let actual = serde_json::to_value(CreditoPagina {
+        creditos,
+        bookmark: "cursor-contrato-2".into(),
+        limit: 25,
+    })
+    .unwrap();
+    let fixture_path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../Frontend/plataforma_credito/test/fixtures/api/creditos_pagina.json"
+    );
+    if std::env::var("UPDATE_API_CONTRACT_FIXTURES").as_deref() == Ok("1") {
+        std::fs::write(
+            fixture_path,
+            format!("{}\n", serde_json::to_string_pretty(&actual).unwrap()),
+        )
+        .unwrap();
+        return;
+    }
+    let expected: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../Frontend/plataforma_credito/test/fixtures/api/creditos_pagina.json"
+    )))
+    .unwrap();
+    assert_eq!(actual, expected);
+}

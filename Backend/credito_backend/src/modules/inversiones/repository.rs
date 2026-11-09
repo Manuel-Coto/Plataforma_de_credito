@@ -132,7 +132,7 @@ impl InversionRepository {
             .await
             .map_err(|_| InversionError::Upstream)?;
 
-        if !result.ok || result.id != id {
+        if !result.ok || result.id != id || result.rev.is_empty() {
             return Err(InversionError::Upstream);
         }
 
@@ -143,8 +143,90 @@ impl InversionRepository {
         self.get_document(&self.facturas_url, id).await
     }
 
-    pub async fn get_oferta(&self, id: &str) -> Result<Oferta, InversionError> {
+    pub(super) async fn oferta_document(&self, id: &str) -> Result<Value, InversionError> {
         self.get_document(&self.ofertas_url, id).await
+    }
+
+    pub(super) async fn ofertas_por_factura(
+        &self,
+        factura_id: &str,
+    ) -> Result<Vec<Oferta>, InversionError> {
+        let response = self
+            .request(&self.ofertas_url, Method::POST, Some("_find"))
+            .json(&json!({"selector":{"tipo":"oferta", "factura_id":factura_id}, "limit":2}))
+            .send()
+            .await
+            .map_err(|_| InversionError::Unavailable)?;
+        if !response.status().is_success() {
+            return Err(Self::map_error(response, false).await);
+        }
+        let found: FindResponse<Oferta> = response
+            .json()
+            .await
+            .map_err(|_| InversionError::Upstream)?;
+        if found
+            .docs
+            .iter()
+            .any(|oferta| oferta.tipo != "oferta" || oferta.factura_id != factura_id)
+        {
+            return Err(InversionError::Upstream);
+        }
+        Ok(found.docs)
+    }
+
+    pub(super) async fn save_oferta_document(
+        &self,
+        id: &str,
+        document: &Value,
+    ) -> Result<(), InversionError> {
+        self.save_document(&self.ofertas_url, id, document).await?;
+        Ok(())
+    }
+
+    pub(super) async fn operacion_document(&self, id: &str) -> Result<Value, InversionError> {
+        self.get_document(&self.operaciones_url, id).await
+    }
+
+    pub(super) async fn save_operacion_document(
+        &self,
+        id: &str,
+        document: &Value,
+    ) -> Result<(), InversionError> {
+        self.save_document(&self.operaciones_url, id, document)
+            .await?;
+        Ok(())
+    }
+
+    pub(super) async fn listar_solicitudes(
+        &self,
+        actor: &str,
+        limit: u32,
+        bookmark: Option<String>,
+    ) -> Result<(Vec<Value>, String), InversionError> {
+        let mut query = json!({
+            "selector": {"tipo":"solicitud_inversion", "inversionista_id":actor},
+            "limit":limit
+        });
+        if let Some(bookmark) = bookmark {
+            query["bookmark"] = json!(bookmark);
+        }
+        let response = self
+            .request(&self.operaciones_url, Method::POST, Some("_find"))
+            .json(&query)
+            .send()
+            .await
+            .map_err(|_| InversionError::Unavailable)?;
+        if !response.status().is_success() {
+            return Err(Self::map_error(response, false).await);
+        }
+        let found: FindResponse<Value> = response
+            .json()
+            .await
+            .map_err(|_| InversionError::Upstream)?;
+        if found.docs.len() > limit as usize {
+            return Err(InversionError::Upstream);
+        }
+        Ok((found.docs, found.bookmark))
     }
 
     pub async fn save_oferta(&self, mut oferta: Oferta) -> Result<Oferta, InversionError> {
@@ -155,11 +237,15 @@ impl InversionRepository {
         Ok(oferta)
     }
 
-    pub async fn save_inversion(&self, inversion: &Inversion) -> Result<(), InversionError> {
-        self.save_document(&self.operaciones_url, &inversion.id, inversion)
-            .await?;
-
-        Ok(())
+    pub async fn save_inversion(
+        &self,
+        mut inversion: Inversion,
+    ) -> Result<Inversion, InversionError> {
+        inversion.revision = Some(
+            self.save_document(&self.operaciones_url, &inversion.id, &inversion)
+                .await?,
+        );
+        Ok(inversion)
     }
 
     pub async fn listar_ofertas(

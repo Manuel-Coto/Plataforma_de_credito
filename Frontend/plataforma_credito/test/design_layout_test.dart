@@ -11,6 +11,8 @@ import 'package:http/testing.dart';
 import 'package:plataforma_credito/main.dart';
 import 'package:plataforma_credito/services/api_client.dart';
 
+import 'support/api_fixtures.dart';
+
 Future<void> _capture(WidgetTester tester, GlobalKey key, String name) async {
   const output = String.fromEnvironment('DESIGN_PREVIEW_DIR');
   if (output.isEmpty) return;
@@ -71,7 +73,7 @@ void main() {
                   'id': 'usuario:layout',
                   'nombre': 'María de los Ángeles',
                   'correo': 'maria@example.test',
-                  'rol': 'pyme',
+                  'rol': 'administrador',
                   'estado': 'activo'
                 },
               }),
@@ -82,16 +84,19 @@ void main() {
         }
         if (request.url.path == '/api/administracion/resumen') {
           return http.Response(
-              jsonEncode({
-                'total_operaciones': 0,
-                'monto_total_centavos': 0,
-                'empresas_verificadas': 0,
-                'facturas_pendientes': 0,
-                'operaciones_por_estado': <String, int>{},
-              }),
-              200);
+              jsonEncode(apiFixture('administracion_resumen')), 200);
         }
-        return http.Response('[]', 200);
+        if (request.url.path == '/api/creditos') {
+          return http.Response(jsonEncode(apiFixture('creditos_pagina')), 200);
+        }
+        if (request.url.path == '/api/facturas') {
+          return http.Response('{"facturas":[],"bookmark":"","limit":50}', 200);
+        }
+        if (request.url.path == '/api/empresas') {
+          return http.Response(
+              '{"empresas":[],"bookmark":"","limit":100}', 200);
+        }
+        return http.Response('{"error":"Ruta no prevista en la prueba"}', 404);
       }));
       await tester.pumpWidget(RepaintBoundary(
           key: captureKey, child: PlataformaCreditoApp(apiClient: api)));
@@ -130,7 +135,8 @@ void main() {
       await tester.tap(find.text('Facturas').first);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.text('Nueva factura'), findsOneWidget);
+      expect(find.text('Filtrar por estado'), findsOneWidget);
+      expect(find.text('Nueva factura'), findsNothing);
       final navigationLabels = size.width >= 1000
           ? ['Empresas', 'Créditos y pagos', 'Administración']
           : ['Empresas', 'Créditos', 'Panel'];

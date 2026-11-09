@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/theme/credito_theme.dart';
-import '../modules/administracion/screens/dashboard_screen.dart';
+import '../modules/administracion/screens/administracion_hub_screen.dart';
 import '../modules/creditos/screens/operaciones_screen.dart';
-import '../modules/empresas/screens/empresa_form_screen.dart';
+import '../modules/empresas/screens/empresa_revision_screen.dart';
 import '../modules/facturas/screens/facturas_lista_screen.dart';
 import '../modules/usuarios/providers/sesion_provider.dart';
 import '../modules/usuarios/screens/cuenta_screen.dart';
-import '../services/empresa_service.dart';
+import '../modules/inversiones/screens/inversiones_screen.dart';
+import 'offline_status.dart';
+import 'session_actions.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -57,27 +59,46 @@ class _AppShellState extends State<AppShell> {
       active: Icons.donut_large_rounded,
       caption: 'Una mirada al movimiento de la plataforma'
     ),
+    (
+      label: 'Ofertas e inversiones',
+      short: 'Invertir',
+      icon: Icons.trending_up_outlined,
+      active: Icons.trending_up_rounded,
+      caption: 'Conecta oportunidades y financiamiento'
+    ),
   ];
 
-  void _navigate(int index) => setState(() {
-        _selected = index;
-        _visited.add(index);
-      });
+  List<int> get _visibles =>
+      switch (context.read<SesionProvider>().usuario?['rol']) {
+        'administrador' => [0, 1, 2, 3, 4, 5],
+        'pyme' => [0, 1, 2, 3, 5],
+        'inversionista' => [0, 2, 3, 5],
+        _ => [0],
+      };
+
+  int get _actual => _visibles.contains(_selected) ? _selected : 0;
+
+  void _navigate(int index) {
+    if (!_visibles.contains(index)) return;
+    setState(() {
+      _selected = index;
+      _visited.add(index);
+    });
+  }
 
   Widget _page(int index) => switch (index) {
         0 => CuentaScreen(onNavigate: _navigate),
-        1 => EmpresaFormScreen(
-            onGuardar: (datos) =>
-                EmpresaService(context.read<SesionProvider>().api).crear(datos),
-          ),
+        1 => const EmpresaRevisionScreen(),
         2 => const FacturasListaScreen(),
         3 => const OperacionesScreen(),
-        _ => const DashboardScreen(),
+        4 => const AdministracionHubScreen(),
+        _ => const InversionesScreen(),
       };
 
   @override
   Widget build(BuildContext context) {
     final sesion = context.watch<SesionProvider>();
+    final visibles = _visibles;
     final rol = switch (sesion.usuario?['rol']) {
       'pyme' => 'Cuenta PYME',
       'inversionista' => 'Inversionista',
@@ -121,8 +142,8 @@ class _AppShellState extends State<AppShell> {
                           const SizedBox(height: 5),
                           Text(
                               desktop
-                                  ? _items[_selected].caption
-                                  : _items[_selected].label,
+                                  ? _items[_actual].caption
+                                  : _items[_actual].label,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -150,17 +171,26 @@ class _AppShellState extends State<AppShell> {
                             color: AppColors.primary, size: 20),
                       ),
                     ),
+                    IconButton(
+                      tooltip: 'Sincronización',
+                      onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                              builder: (_) =>
+                                  SincronizacionScreen(api: sesion.api))),
+                      icon: const Icon(Icons.cloud_sync_outlined, size: 20),
+                    ),
                     if (!desktop)
                       IconButton(
                         tooltip: 'Cerrar sesión',
-                        onPressed: sesion.cerrar,
+                        onPressed: () => confirmarCierreSesion(context, sesion),
                         icon: const Icon(Icons.logout_rounded, size: 20),
                       ),
                   ]),
                 ),
+                OfflineStatus(api: sesion.api),
                 Expanded(
                   child: IndexedStack(
-                    index: _selected,
+                    index: _actual,
                     children: List.generate(
                         _items.length,
                         (i) => _visited.contains(i)
@@ -178,11 +208,12 @@ class _AppShellState extends State<AppShell> {
                 decoration: const BoxDecoration(
                     border: Border(top: BorderSide(color: AppColors.border))),
                 child: NavigationBar(
-                  selectedIndex: _selected,
-                  onDestinationSelected: _navigate,
+                  selectedIndex:
+                      visibles.indexOf(_actual).clamp(0, visibles.length - 1),
+                  onDestinationSelected: (index) => _navigate(visibles[index]),
                   height: 72,
                   destinations: [
-                    for (final item in _items)
+                    for (final item in visibles.map((index) => _items[index]))
                       NavigationDestination(
                         icon: Icon(item.icon, size: 22),
                         selectedIcon: Icon(item.active, size: 22),
@@ -224,11 +255,11 @@ class _AppShellState extends State<AppShell> {
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Column(children: [
-                          for (var i = 0; i < _items.length; i++)
+                          for (final i in _visibles)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 7),
                               child: Material(
-                                color: _selected == i
+                                color: _actual == i
                                     ? AppColors.softPrimary
                                     : Colors.transparent,
                                 borderRadius: BorderRadius.circular(12),
@@ -236,33 +267,33 @@ class _AppShellState extends State<AppShell> {
                                   borderRadius: BorderRadius.circular(12),
                                   onTap: () => _navigate(i),
                                   child: Semantics(
-                                    selected: _selected == i,
+                                    selected: _actual == i,
                                     button: true,
                                     child: Padding(
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 15, vertical: 16),
                                       child: Row(children: [
                                         Icon(
-                                            _selected == i
+                                            _actual == i
                                                 ? _items[i].active
                                                 : _items[i].icon,
                                             size: 21,
-                                            color: _selected == i
+                                            color: _actual == i
                                                 ? AppColors.primary
                                                 : AppColors.muted),
                                         const SizedBox(width: 12),
                                         Expanded(
                                             child: Text(_items[i].label,
                                                 style: TextStyle(
-                                                  color: _selected == i
+                                                  color: _actual == i
                                                       ? AppColors.primary
                                                       : AppColors.muted,
                                                   fontSize: 13,
-                                                  fontWeight: _selected == i
+                                                  fontWeight: _actual == i
                                                       ? FontWeight.w700
                                                       : FontWeight.w500,
                                                 ))),
-                                        if (_selected == i)
+                                        if (_actual == i)
                                           Container(
                                               width: 5,
                                               height: 5,
@@ -309,7 +340,8 @@ class _AppShellState extends State<AppShell> {
                         child: Tooltip(
                           message: 'Cerrar sesión',
                           child: TextButton.icon(
-                            onPressed: sesion.cerrar,
+                            onPressed: () =>
+                                confirmarCierreSesion(context, sesion),
                             style: TextButton.styleFrom(
                                 foregroundColor: AppColors.muted,
                                 alignment: Alignment.centerLeft),

@@ -46,6 +46,34 @@ async fn find(State(shared): State<Shared>, headers: HeaderMap, Json(query): Jso
     if let Some(reply) = failure(&db, &headers) {
         return reply;
     }
+    if let Some(fields) = query.get("fields").and_then(Value::as_array) {
+        assert!(!fields.iter().any(|field| field == "password_hash"));
+        let limit = query["limit"].as_u64().unwrap() as usize;
+        let offset = query["bookmark"]
+            .as_str()
+            .unwrap_or("0")
+            .parse::<usize>()
+            .unwrap();
+        let docs: Vec<Value> = db
+            .documents
+            .values()
+            .skip(offset)
+            .take(limit)
+            .map(|document| {
+                let mut public = serde_json::Map::new();
+                for field in fields.iter().filter_map(Value::as_str) {
+                    if let Some(value) = document.get(field) {
+                        public.insert(field.into(), value.clone());
+                    }
+                }
+                Value::Object(public)
+            })
+            .collect();
+        return (
+            StatusCode::OK,
+            Json(json!({"bookmark": (offset + docs.len()).to_string(), "docs":docs})),
+        );
+    }
     assert_eq!(query["limit"], 2);
     assert_eq!(query["use_index"], json!(["usuarios-correo", "por-correo"]));
     let docs: Vec<_> = db
@@ -89,7 +117,15 @@ async fn write(
         if db.conflict_on_update || doc["_rev"] != old["_rev"] {
             return (StatusCode::CONFLICT, Json(json!({"error": "conflict"})));
         }
-        revision = 2;
+        revision = old["_rev"]
+            .as_str()
+            .unwrap()
+            .split('-')
+            .next()
+            .unwrap()
+            .parse::<u32>()
+            .unwrap()
+            + 1;
     } else {
         assert!(doc.get("_rev").is_none());
     }
@@ -143,6 +179,280 @@ async fn setup() -> (Server, Server, Shared) {
 }
 fn registration(email: &str) -> Value {
     json!({"nombre": "Usuario ficticio", "correo": email, "password": PASSWORD, "rol": "pyme"})
+}
+
+fn seed_gestion(db: &Shared) {
+    let mut db = db.lock().unwrap();
+    for (id, role, state) in [
+        ("admin-gestion", "administrador", "activo"),
+        ("cuenta-gestion", "pyme", "activo"),
+        ("inactivo-gestion", "administrador", "inactivo"),
+    ] {
+        db.documents.insert(id.into(), json!({
+            "_id": id, "_rev":"1-test", "nombre":format!("Cuenta {id}"),
+            "correo":format!("{id}@example.test"), "rol":role, "estado":state,
+            "password_hash":"hash-ficticio-que-no-debe-exponerse", "preferencias":{"tema":"claro"},
+            "fecha_creacion":"2026-11-08T10:00:00Z", "fecha_actualizacion":"2026-11-08T10:00:00Z"
+        }));
+    }
+}
+
+fn gestion_token(id: &str) -> String {
+    Tokens::new(TEST_SECRET.into(), 3600)
+        .unwrap()
+        .issue(id)
+        .unwrap()
+}
+
+#[tokio::test]
+async fn admin_user_listing_is_paginated_private_and_requires_current_active_role() {
+    let (api, _couch, db) = setup().await;
+    seed_gestion(&db);
+    let client = reqwest::Client::new();
+    for path in ["/api/usuarios", "/api/usuarios/cuenta-gestion"] {
+        assert_eq!(
+            client
+                .get(format!("{}{path}", api.url))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+        for (id, expected) in [
+            ("cuenta-gestion", StatusCode::FORBIDDEN),
+            ("inactivo-gestion", StatusCode::UNAUTHORIZED),
+        ] {
+            assert_eq!(
+                client
+                    .get(format!("{}{path}", api.url))
+                    .bearer_auth(gestion_token(id))
+                    .send()
+                    .await
+                    .unwrap()
+                    .status(),
+                expected
+            );
+        }
+    }
+    let mut cursor = "0".to_string();
+    let mut ids = Vec::new();
+    for _ in 0..4 {
+        let response = client
+            .get(format!("{}/api/usuarios", api.url))
+            .query(&[("limit", "1"), ("bookmark", &cursor)])
+            .bearer_auth(gestion_token("admin-gestion"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()["cache-control"], "no-store");
+        let body: Value = response.json().await.unwrap();
+        assert_eq!(body["limit"], 1);
+        assert!(!body.to_string().contains("password_hash"));
+        assert!(!body.to_string().contains("hash-ficticio"));
+        assert!(!body.to_string().contains("_rev"));
+        for user in body["usuarios"].as_array().unwrap() {
+            ids.push(user["id"].as_str().unwrap().to_string());
+        }
+        cursor = body["bookmark"].as_str().unwrap().to_string();
+    }
+    assert_eq!(ids.len(), 3);
+    let response = client
+        .get(format!("{}/api/usuarios/cuenta-gestion", api.url))
+        .bearer_auth(gestion_token("admin-gestion"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["etag"], "\"1-test\"");
+    let user: Value = response.json().await.unwrap();
+    assert_eq!(user["rol"], "pyme");
+    assert!(user.get("password_hash").is_none());
+    assert!(user.get("_rev").is_none());
+}
+
+#[tokio::test]
+async fn admin_permissions_require_strong_revision_and_cannot_lock_out_current_admin() {
+    let (api, _couch, db) = setup().await;
+    seed_gestion(&db);
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/usuarios/cuenta-gestion", api.url);
+    let input = json!({"rol":"inversionista", "estado":"activo"});
+    for (etag, expected) in [
+        (None, StatusCode::PRECONDITION_REQUIRED),
+        (Some("W/\"1-test\""), StatusCode::BAD_REQUEST),
+        (Some("*"), StatusCode::BAD_REQUEST),
+        (Some("\"0-test\""), StatusCode::PRECONDITION_FAILED),
+    ] {
+        let mut request = client
+            .patch(&url)
+            .bearer_auth(gestion_token("admin-gestion"))
+            .json(&input);
+        if let Some(etag) = etag {
+            request = request.header("if-match", etag);
+        }
+        assert_eq!(request.send().await.unwrap().status(), expected);
+    }
+    for input in [
+        json!({"rol":"pyme","estado":"activo"}),
+        json!({"rol":"administrador","estado":"inactivo"}),
+    ] {
+        assert_eq!(
+            client
+                .patch(format!("{}/api/usuarios/admin-gestion", api.url))
+                .bearer_auth(gestion_token("admin-gestion"))
+                .header("if-match", "\"1-test\"")
+                .json(&input)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+    }
+    assert_eq!(
+        client
+            .patch(&url)
+            .bearer_auth(gestion_token("cuenta-gestion"))
+            .header("if-match", "\"1-test\"")
+            .json(&input)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        client
+            .patch(&url)
+            .bearer_auth(gestion_token("admin-gestion"))
+            .header("if-match", "\"1-test\"")
+            .json(&json!({"rol":"pyme","estado":"activo","password_hash":"no-permitido"}))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        db.lock().unwrap().documents["cuenta-gestion"]["_rev"],
+        "1-test"
+    );
+    assert_eq!(
+        db.lock().unwrap().documents["admin-gestion"]["estado"],
+        "activo"
+    );
+}
+
+#[tokio::test]
+async fn permission_changes_apply_to_existing_tokens_and_preserve_profile_and_hash() {
+    let (api, _couch, db) = setup().await;
+    seed_gestion(&db);
+    let before = db.lock().unwrap().documents["cuenta-gestion"].clone();
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/usuarios/cuenta-gestion", api.url);
+    let response = client
+        .patch(&url)
+        .bearer_auth(gestion_token("admin-gestion"))
+        .header("if-match", "\"1-test\"")
+        .json(&json!({"rol":"administrador","estado":"activo"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["etag"], "\"2-test\"");
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["rol"], "administrador");
+    assert!(body.get("password_hash").is_none());
+    assert_eq!(
+        client
+            .get(format!("{}/api/usuarios", api.url))
+            .bearer_auth(gestion_token("cuenta-gestion"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        client
+            .patch(&url)
+            .bearer_auth(gestion_token("admin-gestion"))
+            .header("if-match", "\"2-test\"")
+            .json(&json!({"rol":"administrador","estado":"inactivo"}))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        client
+            .get(format!("{}/api/usuarios/me", api.url))
+            .bearer_auth(gestion_token("cuenta-gestion"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let db = db.lock().unwrap();
+    let after = &db.documents["cuenta-gestion"];
+    for field in [
+        "nombre",
+        "correo",
+        "password_hash",
+        "fecha_creacion",
+        "preferencias",
+    ] {
+        assert_eq!(after[field], before[field]);
+    }
+}
+
+#[tokio::test]
+async fn competing_admin_permission_decisions_do_not_overwrite_each_other() {
+    let (api, _couch, db) = setup().await;
+    seed_gestion(&db);
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/usuarios/cuenta-gestion", api.url);
+    let first = client
+        .patch(&url)
+        .bearer_auth(gestion_token("admin-gestion"))
+        .header("if-match", "\"1-test\"")
+        .json(&json!({"rol":"inversionista","estado":"activo"}));
+    let second = client
+        .patch(&url)
+        .bearer_auth(gestion_token("admin-gestion"))
+        .header("if-match", "\"1-test\"")
+        .json(&json!({"rol":"administrador","estado":"activo"}));
+    let (a, b) = tokio::join!(first.send(), second.send());
+    let statuses = [a.unwrap().status(), b.unwrap().status()];
+    assert_eq!(statuses.iter().filter(|s| **s == StatusCode::OK).count(), 1);
+    assert!(statuses
+        .iter()
+        .any(|s| matches!(*s, StatusCode::CONFLICT | StatusCode::PRECONDITION_FAILED)));
+    assert_eq!(
+        db.lock().unwrap().documents["cuenta-gestion"]["_rev"],
+        "2-test"
+    );
+    db.lock().unwrap().conflict_on_update = true;
+    assert_eq!(
+        client
+            .patch(&url)
+            .bearer_auth(gestion_token("admin-gestion"))
+            .header("if-match", "\"2-test\"")
+            .json(&json!({"rol":"pyme","estado":"activo"}))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        db.lock().unwrap().documents["cuenta-gestion"]["_rev"],
+        "2-test"
+    );
 }
 async fn register(client: &reqwest::Client, api: &Server, email: &str) -> Value {
     let response = client
@@ -466,7 +776,7 @@ async fn profile_requires_own_authentication_and_handles_revision_conflicts() {
             .await
             .unwrap()
             .status(),
-        StatusCode::NOT_FOUND
+        StatusCode::FORBIDDEN
     );
     db.lock().unwrap().conflict_on_update = true;
     assert_eq!(

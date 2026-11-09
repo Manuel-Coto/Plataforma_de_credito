@@ -18,6 +18,9 @@ La pantalla Flutter de usuarios envía el formulario a `POST /api/auth/register`
 | `POST /api/auth/login` | Público; cuenta activa | `200`, token y usuario. |
 | `GET /api/usuarios/me` | JWT de cualquier rol activo | `200`, perfil propio. |
 | `PUT /api/usuarios/me` | JWT de cualquier rol activo | `200`, perfil actualizado. |
+| `GET /api/usuarios` | Administrador activo | `200`, página de perfiles públicos. |
+| `GET /api/usuarios/{id}` | Administrador activo | `200`, perfil público y ETag. |
+| `PATCH /api/usuarios/{id}` | Administrador activo y revisión actual | `200`, rol/estado actualizados y nuevo ETag. |
 
 Enviar `Content-Type: application/json` en solicitudes con cuerpo. Todos los campos de entrada son obligatorios y se rechazan campos adicionales. Las respuestas del módulo llevan `Cache-Control: no-store`.
 
@@ -94,7 +97,32 @@ Enviar `Authorization: Bearer <valor recibido al iniciar sesión>` en GET y PUT 
 {"nombre":"Nombre ficticio actualizado"}
 ```
 
-Devuelve `200` con ese objeto público, nombre actualizado y nueva `fecha_actualizacion`. Conserva ID, correo, rol, estado y fecha de creación. No permite cambiar correo, contraseña, rol o estado ni consultar perfiles ajenos. No existen rutas de logout, renovación o restablecimiento de contraseña en este módulo.
+Devuelve `200` con ese objeto público, nombre actualizado y nueva `fecha_actualizacion`. Conserva ID, correo, rol, estado y fecha de creación. Esta ruta propia no permite cambiar correo, contraseña, rol o estado ni consultar perfiles ajenos. No existen rutas de logout, renovación o restablecimiento de contraseña en este módulo.
+
+Flutter permite editar el nombre desde Mi cuenta. Mientras el PUT está pendiente, el diálogo no se puede descartar y un segundo guardado produce un error explícito. La edición normal mantiene el token y la navegación. Si el servidor devuelve un rol diferente porque cambió desde otra cuenta, se invalidan los proveedores y rutas con los permisos anteriores, conservando el token vigente.
+
+## Gestión administrativa de usuarios
+
+GET /api/usuarios admite limit entre 1 y 100 (25 por defecto) y bookmark opaco de hasta 8192 bytes. Responde con usuarios, bookmark y limit. El listado solicita a CouchDB únicamente campos públicos: no solicita ni devuelve hashes, contraseñas o revisiones. Una página vacía termina el recorrido; no usar el tamaño de una página corta como señal de fin.
+
+Para cambiar permisos, consultar GET /api/usuarios/{id}, conservar su cabecera ETag y enviar:
+
+```http
+PATCH /api/usuarios/{id}
+Authorization: Bearer <token_administrador>
+If-Match: "revision-recibida-en-el-GET"
+Content-Type: application/json
+```
+
+```json
+{"rol":"inversionista","estado":"activo"}
+```
+
+Solo se admiten rol (pyme, inversionista o administrador) y estado (activo o inactivo), ambos obligatorios. El administrador no puede desactivar su propia cuenta ni reducir su propio rol. Se conservan ID, nombre, correo, hash, fecha de creación y propiedades internas ajenas al cambio.
+
+Falta de If-Match produce 428; una etiqueta débil, lista o comodín produce 400; una revisión obsoleta produce 412; una carrera durante el guardado produce 409 sin sobrescribir ni reintentar automáticamente. Ante 409/412, la pantalla muestra el conflicto y exige consultar los datos actuales antes de guardar otra vez. Los cambios se confirman explícitamente en la interfaz.
+
+El rol y estado nuevos se aplican a las solicitudes siguientes, incluso con un JWT emitido antes del cambio: el servidor vuelve a consultar la cuenta en cada operación protegida. No se incluyen roles confiados al cliente dentro del JWT.
 
 ## Errores
 
@@ -107,6 +135,8 @@ El cuerpo de error es `{"error":"mensaje"}`.
 | `403` | Permisos insuficientes al reutilizar la autorización por rol en operaciones protegidas. |
 | `404` | Usuario inexistente durante una operación; en autenticación se convierte a `401`. |
 | `409` | Correo registrado o conflicto de revisión al guardar perfil. |
+| `412` | La revisión del usuario cambió; consultar el perfil administrativo de nuevo. |
+| `428` | Falta If-Match al modificar permisos. |
 | `429` | Límite de intentos/capacidad de hashing; incluye `Retry-After: 60`. |
 | `500` | Error interno del servicio. |
 | `502` | Respuesta incompatible de CouchDB. |
@@ -117,7 +147,7 @@ Registro y login tienen límites en memoria: cinco intentos por operación y cor
 ## Cuenta administradora de prueba
 
 1. Obtener autorización del responsable del entorno local y registrar una cuenta ficticia nueva como `pyme`, con correo único `example.test` y contraseña aleatoria conservada fuera del repositorio.
-2. Un operador autorizado con acceso a Fauxton puede comprobar el ID recién creado y cambiar únicamente su `rol` a `administrador`, guardando con la revisión actual. No modificar hash, contraseña, estado ni otras cuentas. Es preparación manual, no un endpoint de la API.
+2. Si todavía no existe ninguna cuenta administradora, un operador autorizado con acceso a Fauxton puede comprobar el ID recién creado y cambiar únicamente su rol a administrador, guardando con la revisión actual. No modificar hash, contraseña, estado ni otras cuentas. Esta preparación inicial es manual. Si ya existe un administrador, puede asignar el rol desde Usuarios y permisos, sin editar CouchDB directamente.
 3. Iniciar sesión con esa cuenta y comprobar su rol mediante `/api/usuarios/me`. Sin autorización para cambiar el rol, detener la preparación y pedirla.
 
 No publicar credenciales, hashes, documentos completos de usuarios ni JWT. Usar solo empresas ficticias nuevas para las pruebas administrativas.
@@ -126,6 +156,6 @@ No publicar credenciales, hashes, documentos completos de usuarios ni JWT. Usar 
 
 Usar `http://127.0.0.1:3000` si Flutter y Rust se ejecutan en el mismo equipo. Registro no inicia sesión: después llamar a login, tomar `access_token` y consultar `/api/usuarios/me`. Enviar JSON con `Content-Type: application/json` y JWT en `Authorization: Bearer ...` para perfil y [Empresas](empresas.md).
 
-Mantener el token en memoria durante la sesión; si se necesita persistencia, usar almacenamiento seguro del sistema operativo. No escribir token o contraseña en logs, archivos de configuración ni preferencias en texto plano. Al cerrar sesión, borrarlo del cliente; el backend no lo revoca y puede seguir válido hasta expirar. Ante `401`, limpiar la sesión y pedir login; ante `403`, mostrar falta de permisos. Respetar `Retry-After` en `429` y distinguir validación, conflicto y disponibilidad. No conectar Flutter directamente a CouchDB ni darle sus credenciales.
+El cliente actual mantiene el token exclusivamente en memoria: no lo persiste en su archivo cifrado ni en la cola de cambios. No escribir tokens o contraseñas en logs, archivos de configuración ni preferencias. Al cerrar sesión se eliminan también instantáneas y pendientes del contexto anterior; el backend no revoca el JWT y puede seguir válido hasta expirar. Ante 401, limpiar la sesión y pedir login; ante 403, mostrar falta de permisos sin usar datos guardados como sustituto. Respetar Retry-After en 429 y distinguir validación, conflicto y disponibilidad. No conectar Flutter directamente a CouchDB ni darle sus credenciales. Ver [Modo local](../integracion/offline_windows.md).
 
 Flutter Web necesita CORS por separado: origen permitido, métodos usados, cabeceras `Content-Type`, `Authorization`, `If-Match` y exposición de `ETag`. El backend actual no configura CORS. HTTP y escucha local corresponden al prototipo; un despliegue remoto requiere HTTPS y configuración de red propia.

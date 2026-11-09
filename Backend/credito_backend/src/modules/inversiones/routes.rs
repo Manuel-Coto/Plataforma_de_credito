@@ -32,6 +32,7 @@ pub fn router(inversiones: InversionService, usuarios: UsuarioService) -> Router
             "/api/inversiones",
             post(handler::invertir).get(handler::listar_mis_inversiones),
         )
+        .route("/api/inversiones/recuperar", post(handler::recuperar))
         .with_state(InversionState {
             inversiones,
             usuarios,

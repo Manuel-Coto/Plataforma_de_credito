@@ -77,6 +77,12 @@ La base `auditoria` contiene documentos `tipo: "evento"`. Solo se exponen identi
 
 Administración consulta los eventos que los módulos productores persisten. No inventa eventos históricos ni convierte lecturas del dashboard en eventos. Créditos y pagos publican sus eventos de creación, confirmación de aporte y registro de pago; si su sincronización está pendiente, la auditoría reflejará el cambio al recuperarse esa sincronización. Los módulos anteriores conservan sus flujos existentes.
 
+## Interfaz de administración
+
+Flutter integra tres secciones: Resumen, Reportes y auditoría, y Usuarios. El resumen consume los ocho reportes reales; el selector de reportes consulta el módulo solicitado y muestra importes separados por moneda. La auditoría permite combinar actor y recurso, continuar con el cursor y presentar las fechas en hora local, sin prometer orden cronológico.
+
+La gestión de usuarios usa los endpoints del [módulo Usuarios](usuarios.md#gestión-administrativa-de-usuarios). Las mutaciones administrativas se confirman y requieren conexión. Una lectura protegida puede disponer de una instantánea local ante fallos de conexión, conforme al [modo local Windows](../integracion/offline_windows.md); no equivale a una consulta actual del servidor ni habilita una decisión sin sus permisos y precondiciones.
+
 ## Errores
 
 Los errores usan `{ "error": "mensaje" }`: `400` para consultas inválidas, `401` para autenticación ausente/incorrecta o usuario inactivo, `403` para rol insuficiente, `503` para configuración o base no disponible y `502` para respuestas incompatibles de CouchDB. No se exponen credenciales ni mensajes internos del servidor de base de datos.

@@ -18,6 +18,7 @@ use crate::modules::usuarios::model::Rol;
 pub async fn create(
     State(service): State<EmpresaService>,
     user: AuthenticatedUser,
+    headers: HeaderMap,
     body: Result<Json<EmpresaInput>, JsonRejection>,
 ) -> Result<(StatusCode, Json<Empresa>), EmpresaError> {
     let Json(input) = body.map_err(|_| {
@@ -27,7 +28,15 @@ pub async fn create(
     })?;
     Ok((
         StatusCode::CREATED,
-        Json(service.create(&user.0, input).await?),
+        Json(
+            service
+                .create(
+                    &user.0,
+                    input,
+                    crate::idempotency::key(&headers).map_err(EmpresaError::Invalid)?,
+                )
+                .await?,
+        ),
     ))
 }
 
@@ -122,14 +131,22 @@ pub async fn update(
     State(service): State<EmpresaService>,
     user: AuthenticatedUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
     body: Result<Json<EmpresaInput>, JsonRejection>,
 ) -> Result<Json<Empresa>, EmpresaError> {
+    user.require_roles(&[Rol::Pyme, Rol::Administrador])
+        .map_err(|_| EmpresaError::Forbidden)?;
+    let revision = if headers.contains_key(header::IF_MATCH) {
+        Some(expected_revision(&headers)?)
+    } else {
+        None
+    };
     let Json(input) = body.map_err(|_| {
         EmpresaError::Invalid(
             "JSON inválido; revise los campos requeridos y no envíe estado, id o fechas",
         )
     })?;
-    Ok(Json(service.update(&user.0, &id, input).await?))
+    Ok(Json(service.update(&user.0, &id, input, revision).await?))
 }
 
 pub async fn deactivate(

@@ -51,7 +51,15 @@ Respuesta `201` de POST; ID y fechas son ilustrativos y deben tomarse de la resp
 }
 ```
 
-Para editar, enviar ese cuerpo de cinco campos a `PUT /api/empresas/{id}`. Devuelve `200` con el mismo objeto público y los datos actuales. Conserva ID, responsable y fecha de creación. Una edición efectiva de una empresa `activa` o `rechazada` la devuelve a `pendiente` en la misma escritura; datos iguales después de normalizarlos no cambian estado, fechas ni revisión. Una empresa `inactiva` sigue inactiva aunque se edite. PUT no exige If-Match ni entrega ETag; CouchDB puede responder con conflicto concurrente (`409`).
+Para editar, enviar ese cuerpo de cinco campos a PUT /api/empresas/{id}. Devuelve 200 con el mismo objeto público y los datos actuales. Conserva ID, responsable y fecha de creación. Una edición efectiva de una empresa activa o rechazada la devuelve a pendiente en la misma escritura; datos iguales después de normalizarlos no cambian estado, fechas ni revisión. Una empresa inactiva sigue inactiva aunque se edite.
+
+PUT admite If-Match opcional con el ETag fuerte observado en el GET; si se envía y ya no coincide, responde 412 antes de modificar los datos. La cola local utiliza esa precondición para no sobrescribir una revisión posterior. Sin cabecera conserva la compatibilidad del formulario en línea y CouchDB sigue rechazando carreras de revisión con 409. PUT no entrega un ETag nuevo: consultar otra vez antes de decidir una revisión administrativa.
+
+## Creación idempotente y modo local
+
+POST /api/empresas admite una única Idempotency-Key opcional de 1 a 128 caracteres ASCII sin espacios. Con ella, el ID queda asociado al usuario y la clave. Repetir el mismo cuerpo normalizado devuelve la misma empresa, conservando el estado que tenga en ese momento; no la vuelve a pendiente después de haber sido aprobada. Reutilizar la clave con contenido diferente produce 409. La huella interna de la solicitud no se expone en el objeto público.
+
+El cliente conserva la misma clave al sincronizar una creación pendiente. Sin clave se mantiene el control de NIT duplicado, pero no debe suponerse que un reintento perdido equivale a una nueva empresa. Ver el [alcance offline](../integracion/offline_windows.md).
 
 ## Listado paginado
 

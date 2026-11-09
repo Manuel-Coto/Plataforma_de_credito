@@ -391,6 +391,47 @@ async fn individual_etag_and_admin_preconditions_use_real_revision() {
 }
 
 #[tokio::test]
+async fn conditional_company_edit_never_overwrites_a_newer_revision() {
+    let (api, _couch, db) = setup().await;
+    db.lock()
+        .unwrap()
+        .documents
+        .insert("revision-test".into(), review_document("activa"));
+    let url = format!("{}/api/empresas/revision-test", api.url);
+    let owner = client_for("pyme");
+    let snapshot = review_document("activa");
+    let stale = owner
+        .put(&url)
+        .header("if-match", "\"0-stale\"")
+        .json(&input("REVISION-EDIT"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(stale.status(), StatusCode::PRECONDITION_FAILED);
+    assert_eq!(db.lock().unwrap().documents["revision-test"], snapshot);
+    let changed = owner
+        .put(&url)
+        .header("if-match", "\"1-test\"")
+        .json(&input("REVISION-EDIT"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(changed.status(), StatusCode::OK);
+    let result: Value = changed.json().await.unwrap();
+    assert_eq!(result["estado"], "pendiente");
+    let saved = db.lock().unwrap().documents["revision-test"].clone();
+    let repeated = owner
+        .put(&url)
+        .header("if-match", "\"1-test\"")
+        .json(&input("OTRO-NIT"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(repeated.status(), StatusCode::PRECONDITION_FAILED);
+    assert_eq!(db.lock().unwrap().documents["revision-test"], saved);
+}
+
+#[tokio::test]
 async fn review_transitions_and_idempotence_require_matching_revision() {
     let (api, _couch, db) = setup().await;
     let admin = client_for("admin");

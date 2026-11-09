@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../../../core/format.dart';
 import '../../../core/theme/credito_theme.dart';
 import '../../../models/operacion.dart';
+import '../../usuarios/providers/sesion_provider.dart';
+import '../widgets/crear_credito_dialog.dart';
 import '../../../widgets/empty_state.dart';
 import '../../../widgets/page_header.dart';
 import '../../../widgets/vista_error.dart';
@@ -27,6 +29,7 @@ class _OperacionesScreenState extends State<OperacionesScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<OperacionesProvider>();
+    final sesion = context.watch<SesionProvider?>();
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
@@ -39,10 +42,24 @@ class _OperacionesScreenState extends State<OperacionesScreen> {
                 title: 'Créditos y pagos',
                 subtitle:
                     'Sigue cada operación y conoce el avance de tus pagos.',
-                action: OutlinedButton.icon(
-                    onPressed: provider.cargando ? null : provider.cargar,
-                    icon: const Icon(Icons.refresh_rounded, size: 19),
-                    label: const Text('Actualizar'))),
+                action: Wrap(spacing: 10, runSpacing: 10, children: [
+                  if (sesion?.usuario?['rol'] == 'administrador')
+                    FilledButton.icon(
+                        onPressed: () async {
+                          final creado = await showDialog<bool>(
+                              context: context,
+                              builder: (_) => CrearCreditoDialog(
+                                  api: sesion!.api,
+                                  onCreado: provider.incorporar));
+                          if (creado == true) await provider.cargar();
+                        },
+                        icon: const Icon(Icons.add),
+                        label: const Text('Crear crédito')),
+                  OutlinedButton.icon(
+                      onPressed: provider.cargando ? null : provider.cargar,
+                      icon: const Icon(Icons.refresh_rounded, size: 19),
+                      label: const Text('Actualizar'))
+                ])),
           ),
           if (provider.estados.isNotEmpty)
             SingleChildScrollView(
@@ -55,6 +72,12 @@ class _OperacionesScreenState extends State<OperacionesScreen> {
                     _chip(estadoLegible(estado), provider.filtro == estado,
                         () => provider.setFiltro(estado)),
                 ])),
+          if (provider.filtro == 'vencido')
+            const Padding(
+                padding: EdgeInsets.fromLTRB(24, 0, 24, 14),
+                child: Text(
+                    'Vencido incluye créditos activos con días de mora.',
+                    style: TextStyle(color: AppColors.muted, fontSize: 12))),
           Expanded(child: _cuerpo(provider)),
         ]),
       ),
@@ -77,24 +100,66 @@ class _OperacionesScreenState extends State<OperacionesScreen> {
     if (provider.operaciones.isEmpty) {
       return EmptyState(
           icon: Icons.account_balance_wallet_outlined,
-          title: provider.filtro == null
-              ? 'Tus próximos pasos, aquí'
-              : 'No hay operaciones en este estado',
-          message: provider.filtro == null
-              ? 'Las operaciones aparecerán cuando se acepte una oferta. Aquí podrás seguir sus pagos y vencimientos.'
-              : 'Selecciona otro estado para consultar tus operaciones.');
+          title: provider.hayMas
+              ? 'Sigue explorando tus créditos'
+              : provider.filtro == null
+                  ? 'Tus próximos pasos, aquí'
+                  : 'No hay operaciones en este estado',
+          message: provider.errorMas ??
+              (provider.hayMas
+                  ? 'Aún quedan registros por revisar para este filtro.'
+                  : provider.filtro == null
+                      ? 'Cuando se cree un crédito, podrás consultar aquí sus pagos y vencimientos.'
+                      : 'Selecciona otro estado para consultar tus operaciones.'),
+          action: provider.hayMas
+              ? OutlinedButton(
+                  onPressed: provider.cargandoMas ? null : provider.cargarMas,
+                  child: Text(provider.cargandoMas
+                      ? 'Cargando...'
+                      : provider.errorMas == null
+                          ? 'Cargar más créditos'
+                          : 'Reintentar página'))
+              : null);
     }
     return RefreshIndicator(
       onRefresh: provider.cargar,
       child: ListView.separated(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
-          itemCount: provider.operaciones.length,
+          itemCount: provider.operaciones.length + 1,
           separatorBuilder: (_, __) => const SizedBox(height: 14),
-          itemBuilder: (_, i) =>
-              _OperacionCard(operacion: provider.operaciones[i])),
+          itemBuilder: (_, i) => i < provider.operaciones.length
+              ? _OperacionCard(operacion: provider.operaciones[i])
+              : _paginacion(provider)),
     );
   }
+
+  Widget _paginacion(OperacionesProvider provider) => Column(children: [
+        if (provider.errorMas != null)
+          Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(provider.errorMas!,
+                  style: const TextStyle(color: AppColors.error))),
+        if (provider.hayMas)
+          OutlinedButton.icon(
+              onPressed: provider.cargandoMas ? null : provider.cargarMas,
+              icon: provider.cargandoMas
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.expand_more),
+              label: Text(provider.cargandoMas
+                  ? 'Cargando...'
+                  : provider.errorMas == null
+                      ? 'Cargar más créditos'
+                      : 'Reintentar página')),
+        if (!provider.hayMas && provider.operaciones.isNotEmpty)
+          const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text('Has llegado al final de la consulta.',
+                  style: TextStyle(color: AppColors.muted, fontSize: 12))),
+      ]);
 }
 
 class _OperacionCard extends StatelessWidget {
@@ -105,12 +170,25 @@ class _OperacionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final texto = Theme.of(context).textTheme;
     final o = operacion;
+    final provider = context.read<OperacionesProvider>();
+    final rol = context.read<SesionProvider?>()?.usuario?['rol'];
     return Card(
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => OperacionDetalleScreen(operacion: o))),
+            builder: (_) => OperacionDetalleScreen(
+                operacion: o,
+                onActualizar: () => provider.servicio.obtener(o.id),
+                onPagar: rol == 'pyme' || rol == 'administrador'
+                    ? (monto) => provider.pagar(o, monto)
+                    : null,
+                onSincronizar: rol == 'administrador'
+                    ? () => provider.sincronizar(o.id)
+                    : null,
+                montoPendiente: () => provider.intentoPago(o.id)?.montoCentavos,
+                sincronizacionPendiente:
+                    provider.sincronizacionPendiente.contains(o.id)))),
         child: Padding(
           padding: const EdgeInsets.all(22),
           child:
@@ -133,6 +211,13 @@ class _OperacionCard extends StatelessWidget {
                     Text('Vence ${fecha(o.vencimiento)}',
                         style:
                             texto.bodySmall?.copyWith(color: AppColors.muted)),
+                    if (o.vencido) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                          '${o.diasMora} ${o.diasMora == 1 ? 'día' : 'días'} de mora',
+                          style: texto.bodySmall
+                              ?.copyWith(color: AppColors.error)),
+                    ],
                   ])),
               const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
             ]),
@@ -142,18 +227,22 @@ class _OperacionCard extends StatelessWidget {
                 runSpacing: 12,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Text(money(o.montoCentavos, o.moneda),
+                  Text(money(o.totalCentavos, o.moneda),
                       style: texto.headlineSmall
                           ?.copyWith(fontWeight: FontWeight.w700)),
                   Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
-                          color: AppColors.softPrimary,
+                          color: o.vencido
+                              ? const Color(0xFFFFEFEC)
+                              : AppColors.softPrimary,
                           borderRadius: BorderRadius.circular(8)),
-                      child: Text(estadoLegible(o.estado),
-                          style: texto.labelMedium
-                              ?.copyWith(color: AppColors.primary))),
+                      child: Text(estadoLegible(o.estadoVisible),
+                          style: texto.labelMedium?.copyWith(
+                              color: o.vencido
+                                  ? AppColors.error
+                                  : AppColors.primary))),
                 ]),
             const SizedBox(height: 20),
             Row(children: [
@@ -171,6 +260,10 @@ class _OperacionCard extends StatelessWidget {
                     value: o.progreso,
                     minHeight: 7,
                     backgroundColor: AppColors.softPrimary)),
+            const SizedBox(height: 12),
+            Text('Saldo ${money(o.saldoCentavos, o.moneda)}',
+                style: texto.bodySmall?.copyWith(
+                    color: AppColors.ink, fontWeight: FontWeight.w600)),
           ]),
         ),
       ),

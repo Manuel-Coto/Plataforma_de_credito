@@ -3,9 +3,13 @@ import 'package:flutter/services.dart';
 
 import '../../../core/theme/credito_theme.dart';
 import '../../../widgets/page_header.dart';
+import '../../../services/api_client.dart';
 
 class EmpresaFormScreen extends StatefulWidget {
-  const EmpresaFormScreen({super.key, this.onGuardar});
+  const EmpresaFormScreen(
+      {super.key, this.onGuardar, this.initialData, this.onGuardado});
+  final Map<String, dynamic>? initialData;
+  final VoidCallback? onGuardado;
 
   final Future<void> Function(Map<String, String>)? onGuardar;
 
@@ -21,6 +25,20 @@ class _EmpresaFormScreenState extends State<EmpresaFormScreen> {
   final _telefono = TextEditingController();
   final _direccion = TextEditingController();
   bool _enviando = false;
+  bool get _editando => widget.initialData != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final data = widget.initialData;
+    if (data != null) {
+      _nombre.text = data['nombre'] as String? ?? '';
+      _nit.text = data['nit'] as String? ?? '';
+      _correo.text = data['correo'] as String? ?? '';
+      _telefono.text = data['telefono'] as String? ?? '';
+      _direccion.text = data['direccion'] as String? ?? '';
+    }
+  }
 
   @override
   void dispose() {
@@ -45,11 +63,31 @@ class _EmpresaFormScreenState extends State<EmpresaFormScreen> {
         'direccion': _direccion.text.trim(),
       });
       if (!mounted) return;
+      if (widget.onGuardado != null) {
+        messenger.showSnackBar(SnackBar(
+            content: Text(_editando
+                ? 'Empresa actualizada.'
+                : 'Empresa registrada. Estado: Pendiente.')));
+        widget.onGuardado!();
+        return;
+      }
       for (final c in [_nombre, _nit, _correo, _telefono, _direccion]) {
         c.clear();
       }
       messenger.showSnackBar(const SnackBar(
           content: Text('Empresa registrada. Estado: Pendiente.')));
+    } on OfflineQueuedException {
+      if (!mounted) return;
+      messenger.showSnackBar(const SnackBar(
+          content: Text(
+              'Cambio guardado en este equipo. Abre Sincronización para enviarlo cuando vuelva la conexión.')));
+      if (widget.onGuardado != null) {
+        widget.onGuardado!();
+      } else {
+        for (final c in [_nombre, _nit, _correo, _telefono, _direccion]) {
+          c.clear();
+        }
+      }
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(
@@ -69,11 +107,12 @@ class _EmpresaFormScreenState extends State<EmpresaFormScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const PageHeader(
+                  PageHeader(
                     eyebrow: 'EL PRIMER PASO PARA CRECER',
-                    title: 'Registrar empresa',
-                    subtitle:
-                        'Cuéntanos sobre tu empresa. Te acompañamos desde aquí.',
+                    title: _editando ? 'Editar empresa' : 'Registrar empresa',
+                    subtitle: _editando
+                        ? 'Los cambios en empresas activas o rechazadas requieren una nueva revisión.'
+                        : 'Cuéntanos sobre tu empresa. Te acompañamos desde aquí.',
                   ),
                   const SizedBox(height: 28),
                   LayoutBuilder(builder: (context, constraints) {
@@ -82,7 +121,7 @@ class _EmpresaFormScreenState extends State<EmpresaFormScreen> {
                       return Column(children: [
                         form,
                         const SizedBox(height: 22),
-                        const _RegistrationGuide(),
+                        if (!_editando) const _RegistrationGuide(),
                       ]);
                     }
                     return Row(
@@ -90,7 +129,9 @@ class _EmpresaFormScreenState extends State<EmpresaFormScreen> {
                       children: [
                         Expanded(child: form),
                         const SizedBox(width: 24),
-                        const SizedBox(width: 270, child: _RegistrationGuide()),
+                        if (!_editando)
+                          const SizedBox(
+                              width: 270, child: _RegistrationGuide()),
                       ],
                     );
                   }),
@@ -178,15 +219,22 @@ class _EmpresaFormScreenState extends State<EmpresaFormScreen> {
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.arrow_forward_rounded, size: 19),
-                  label: Text(
-                      _enviando ? 'Guardando empresa...' : 'Guardar empresa'),
+                  label: Text(_enviando
+                      ? 'Guardando empresa...'
+                      : _editando
+                          ? 'Guardar cambios'
+                          : 'Guardar empresa'),
                 ),
               ),
               const SizedBox(height: 12),
-              const Center(
-                child: Text('Tu registro se enviará a revisión.',
+              Center(
+                child: Text(
+                    _editando
+                        ? 'Una empresa inactiva permanecerá inactiva después de editarse.'
+                        : 'Tu registro se enviará a revisión.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: AppColors.muted, fontSize: 12)),
+                    style:
+                        const TextStyle(color: AppColors.muted, fontSize: 12)),
               ),
             ],
           ),

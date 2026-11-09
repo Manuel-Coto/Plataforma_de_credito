@@ -100,3 +100,18 @@ pub struct InversionPagina {
     pub bookmark: String,
     pub limit: u32,
 }
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecuperarInversiones {
+    pub limit: Option<u32>,
+    pub bookmark: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RecuperacionPagina {
+    pub recuperadas: u32,
+    pub pendientes: u32,
+    pub omitidas: u32,
+    pub bookmark: String,
+}

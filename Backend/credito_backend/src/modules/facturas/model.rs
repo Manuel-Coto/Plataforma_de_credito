@@ -77,7 +77,8 @@ pub struct Factura {
     pub datos: FacturaDocumento,
 }
 impl FacturaDocumento {
-    pub fn into_factura(self) -> Result<Factura, super::FacturaError> {
+    pub fn into_factura(mut self) -> Result<Factura, super::FacturaError> {
+        self.extra.remove("solicitud_creacion_huella");
         let id = self
             .id
             .clone()

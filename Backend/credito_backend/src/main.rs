@@ -2,7 +2,10 @@ use axum::{routing::get, Json, Router};
 use serde_json::{json, Value};
 
 mod database;
+mod idempotency;
 mod modules;
+#[cfg(test)]
+mod real_integration_tests;
 
 use modules::{
     administracion::{

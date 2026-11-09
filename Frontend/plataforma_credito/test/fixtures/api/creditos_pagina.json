@@ -1,0 +1,122 @@
+{
+  "bookmark": "cursor-contrato-2",
+  "creditos": [
+    {
+      "capital_centavos": 100000,
+      "dias_mora": 5,
+      "empresa_id": "empresa:ficticia",
+      "estado": "activo",
+      "factura_id": "factura:contrato-activa",
+      "fecha_creacion": "2026-10-01T12:00:00Z",
+      "fecha_pago_total": null,
+      "fecha_vencimiento": "2026-11-02",
+      "id": "credito:contrato-activo",
+      "interes_centavos": 1000,
+      "moneda": "USD",
+      "oferta_id": "oferta:contrato-activo",
+      "pagado_centavos": 40000,
+      "pagos": [
+        {
+          "fecha": "2026-11-05T10:00:00Z",
+          "id": "pago:contrato-01",
+          "monto_centavos": 40000,
+          "referencia": "CUOTA-01",
+          "registrado_por": "usuario:pyme-ficticia"
+        }
+      ],
+      "participaciones": [
+        {
+          "capital_centavos": 60000,
+          "interes_centavos": 600,
+          "inversion_id": "inversion:contrato-01",
+          "inversionista_id": "usuario:inversor-ficticio"
+        },
+        {
+          "capital_centavos": 40000,
+          "interes_centavos": 400,
+          "inversion_id": "inversion:contrato-02",
+          "inversionista_id": "usuario:otro-inversor"
+        }
+      ],
+      "saldo_centavos": 61000,
+      "tasa_anual_bp": 3650,
+      "total_centavos": 101000,
+      "vencido": true,
+      "version": 2
+    },
+    {
+      "capital_centavos": 50000,
+      "dias_mora": 0,
+      "empresa_id": "empresa:ficticia",
+      "estado": "pagado",
+      "factura_id": "factura:contrato-pagada",
+      "fecha_creacion": "2026-10-01T12:00:00Z",
+      "fecha_pago_total": "2026-11-04T16:30:00Z",
+      "fecha_vencimiento": "2026-11-01",
+      "id": "credito:contrato-pagado",
+      "interes_centavos": 2500,
+      "moneda": "USD",
+      "oferta_id": "oferta:contrato-pagado",
+      "pagado_centavos": 52500,
+      "pagos": [
+        {
+          "fecha": "2026-11-03T10:00:00Z",
+          "id": "pago:contrato-02",
+          "monto_centavos": 25000,
+          "referencia": "CUOTA-02",
+          "registrado_por": "usuario:pyme-ficticia"
+        },
+        {
+          "fecha": "2026-11-04T16:30:00Z",
+          "id": "pago:contrato-03",
+          "monto_centavos": 27500,
+          "referencia": "CUOTA-03",
+          "registrado_por": "usuario:pyme-ficticia"
+        }
+      ],
+      "participaciones": [
+        {
+          "capital_centavos": 50000,
+          "interes_centavos": 2500,
+          "inversion_id": "inversion:contrato-03",
+          "inversionista_id": "usuario:inversor-ficticio"
+        }
+      ],
+      "saldo_centavos": 0,
+      "tasa_anual_bp": 1000,
+      "total_centavos": 52500,
+      "vencido": false,
+      "version": 3
+    },
+    {
+      "capital_centavos": 24000,
+      "dias_mora": 0,
+      "empresa_id": "empresa:ficticia",
+      "estado": "activo",
+      "factura_id": "factura:contrato-eur",
+      "fecha_creacion": "2026-10-01T12:00:00Z",
+      "fecha_pago_total": null,
+      "fecha_vencimiento": "2026-11-20",
+      "id": "credito:contrato-eur",
+      "interes_centavos": 1200,
+      "moneda": "EUR",
+      "oferta_id": "oferta:contrato-eur",
+      "pagado_centavos": 0,
+      "pagos": [],
+      "participaciones": [
+        {
+          "capital_centavos": 24000,
+          "interes_centavos": 1200,
+          "inversion_id": "inversion:contrato-04",
+          "inversionista_id": "usuario:inversor-ficticio"
+        }
+      ],
+      "saldo_centavos": 25200,
+      "tasa_anual_bp": 1000,
+      "total_centavos": 25200,
+      "vencido": false,
+      "version": 1
+    }
+  ],
+  "limit": 25
+}

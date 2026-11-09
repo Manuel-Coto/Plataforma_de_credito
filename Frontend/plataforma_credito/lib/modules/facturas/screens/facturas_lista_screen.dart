@@ -9,6 +9,7 @@ import '../providers/facturas_provider.dart';
 import '../widgets/factura_card.dart';
 import '../widgets/filtro_estados.dart';
 import 'factura_form_screen.dart';
+import '../../usuarios/providers/sesion_provider.dart';
 
 class FacturasListaScreen extends StatefulWidget {
   const FacturasListaScreen({super.key});
@@ -49,11 +50,14 @@ class _FacturasListaScreenState extends State<FacturasListaScreen> {
                         ? null
                         : provider.cargar,
                     icon: const Icon(Icons.refresh_rounded, size: 21)),
-                const SizedBox(width: 10),
-                FilledButton.icon(
-                    onPressed: _nuevaFactura,
-                    icon: const Icon(Icons.add_rounded, size: 20),
-                    label: const Text('Nueva factura')),
+                if (context.watch<SesionProvider>().usuario?['rol'] ==
+                    'pyme') ...[
+                  const SizedBox(width: 10),
+                  FilledButton.icon(
+                      onPressed: _nuevaFactura,
+                      icon: const Icon(Icons.add_rounded, size: 20),
+                      label: const Text('Nueva factura')),
+                ],
               ]),
             ),
           ),
@@ -100,10 +104,38 @@ class _FacturasListaScreenState extends State<FacturasListaScreen> {
           child: ListView.builder(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
-              itemCount: provider.facturas.length,
-              itemBuilder: (context, i) =>
-                  FacturaCard(factura: provider.facturas[i])),
+              itemCount: provider.facturas.length + 1,
+              itemBuilder: (context, i) => i < provider.facturas.length
+                  ? FacturaCard(factura: provider.facturas[i])
+                  : _paginacion(provider)),
         );
     }
   }
+
+  Widget _paginacion(FacturasProvider provider) => Column(children: [
+        if (provider.errorMas != null)
+          Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(provider.errorMas!,
+                  style: const TextStyle(color: AppColors.error))),
+        if (provider.hayMas)
+          OutlinedButton.icon(
+              onPressed: provider.cargandoMas ? null : provider.cargarMas,
+              icon: provider.cargandoMas
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.expand_more),
+              label: Text(provider.cargandoMas
+                  ? 'Cargando...'
+                  : provider.errorMas == null
+                      ? 'Cargar más facturas'
+                      : 'Reintentar página')),
+        if (!provider.hayMas && provider.facturas.isNotEmpty)
+          const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text('Has llegado al final de la consulta.',
+                  style: TextStyle(color: AppColors.muted, fontSize: 12))),
+      ]);
 }

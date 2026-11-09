@@ -15,8 +15,8 @@ use tokio::sync::Semaphore;
 use super::{
     auth::Tokens,
     model::{
-        EstadoUsuario, LoginInput, LoginResponse, ProfileInput, RegisterInput, Rol, Usuario,
-        UsuarioDocumento,
+        EstadoUsuario, LoginInput, LoginResponse, PermisosInput, ProfileInput, RegisterInput, Rol,
+        Usuario, UsuarioDocumento, UsuariosPagina, UsuariosQuery,
     },
     repository::{email_id, UsuarioRepository},
     UsuarioError,
@@ -175,6 +175,7 @@ impl UsuarioService {
             estado: EstadoUsuario::Activo,
             fecha_creacion: now,
             fecha_actualizacion: now,
+            extra: Default::default(),
         };
         Ok(inner.repository.save(document).await?.into())
     }
@@ -242,6 +243,98 @@ impl UsuarioService {
         document.fecha_actualizacion = Utc::now();
         Ok(inner.repository.save(document).await?.into())
     }
+
+    pub async fn list_users(
+        &self,
+        actor: &Usuario,
+        query: UsuariosQuery,
+    ) -> Result<UsuariosPagina, UsuarioError> {
+        require_admin(actor)?;
+        let limit = query.limit.unwrap_or(25);
+        if !(1..=100).contains(&limit) {
+            return Err(UsuarioError::Invalid("limit debe estar entre 1 y 100"));
+        }
+        if query.bookmark.as_ref().is_some_and(|b| b.len() > 8192) {
+            return Err(UsuarioError::Invalid("bookmark demasiado largo"));
+        }
+        let (usuarios, bookmark) = self.inner()?.repository.list(limit, query.bookmark).await?;
+        Ok(UsuariosPagina {
+            usuarios,
+            bookmark,
+            limit,
+        })
+    }
+
+    pub async fn get_user(
+        &self,
+        actor: &Usuario,
+        id: &str,
+    ) -> Result<(Usuario, String), UsuarioError> {
+        require_admin(actor)?;
+        validate_user_id(id)?;
+        public_with_revision(self.inner()?.repository.get(id).await?)
+    }
+
+    pub async fn update_permissions(
+        &self,
+        actor: &Usuario,
+        id: &str,
+        expected_revision: &str,
+        input: PermisosInput,
+    ) -> Result<(Usuario, String), UsuarioError> {
+        require_admin(actor)?;
+        validate_user_id(id)?;
+        // Un administrador conserva su propia capacidad de administrar.
+        if actor.id == id
+            && (input.rol != Rol::Administrador || input.estado != EstadoUsuario::Activo)
+        {
+            return Err(UsuarioError::Forbidden);
+        }
+        let repository = &self.inner()?.repository;
+        let mut document = repository.get(id).await?;
+        if document.rev.as_deref() != Some(expected_revision) {
+            return Err(UsuarioError::PreconditionFailed);
+        }
+        if document.rol == input.rol && document.estado == input.estado {
+            return public_with_revision(document);
+        }
+        document.rol = input.rol;
+        document.estado = input.estado;
+        document.fecha_actualizacion = Utc::now();
+        // PUT conserva la revisión leída: una carrera devuelve 409 sin sobrescribir.
+        public_with_revision(repository.save(document).await?)
+    }
+}
+
+fn require_admin(actor: &Usuario) -> Result<(), UsuarioError> {
+    if actor.rol != Rol::Administrador || actor.estado != EstadoUsuario::Activo {
+        return Err(UsuarioError::Forbidden);
+    }
+    Ok(())
+}
+
+fn validate_user_id(id: &str) -> Result<(), UsuarioError> {
+    if id.is_empty()
+        || id.len() > 512
+        || id.starts_with('_')
+        || id == "."
+        || id == ".."
+        || id.contains(['/', '\\'])
+        || id.trim() != id
+        || id.chars().any(char::is_control)
+    {
+        return Err(UsuarioError::Invalid("Identificador de usuario inválido"));
+    }
+    Ok(())
+}
+
+fn public_with_revision(document: UsuarioDocumento) -> Result<(Usuario, String), UsuarioError> {
+    let revision = document
+        .rev
+        .clone()
+        .filter(|r| !r.is_empty())
+        .ok_or(UsuarioError::Upstream)?;
+    Ok((document.into(), revision))
 }
 
 fn validate_name(name: String) -> Result<String, UsuarioError> {

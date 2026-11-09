@@ -20,11 +20,14 @@ class PlataformaCreditoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => SesionProvider(apiClient ?? ApiClient()),
+      create: (_) => SesionProvider(
+          apiClient ?? ApiClient(offlineStore: OfflineStore.windowsDefault())),
       child: Consumer<SesionProvider>(
         builder: (context, sesion, _) => MultiProvider(
           key: ValueKey(sesion.version),
           providers: [
+            ChangeNotifierProvider<OfflineController>.value(
+                value: sesion.api.offline),
             ChangeNotifierProvider<FacturasProvider>(
               create: (_) => _FacturasDeSesion(FacturaService(sesion.api)),
             ),

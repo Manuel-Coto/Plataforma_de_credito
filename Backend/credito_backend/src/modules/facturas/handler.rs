@@ -9,16 +9,27 @@ use axum::{
         rejection::{JsonRejection, QueryRejection},
         Path, Query, State,
     },
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     Json,
 };
 pub async fn create(
     State(s): State<FacturaService>,
     user: AuthenticatedUser,
+    headers: HeaderMap,
     body: Result<Json<CrearFactura>, JsonRejection>,
 ) -> Result<(StatusCode, Json<Factura>), FacturaError> {
     let Json(input) = body.map_err(|_| FacturaError::Invalid("JSON de factura inválido"))?;
-    Ok((StatusCode::CREATED, Json(s.create(&user.0, input).await?)))
+    Ok((
+        StatusCode::CREATED,
+        Json(
+            s.create(
+                &user.0,
+                input,
+                crate::idempotency::key(&headers).map_err(FacturaError::Invalid)?,
+            )
+            .await?,
+        ),
+    ))
 }
 pub async fn list(
     State(s): State<FacturaService>,

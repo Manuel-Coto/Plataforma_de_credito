@@ -232,6 +232,94 @@ async fn summary_covers_all_modules_and_keeps_operations_types_separate() {
     assert_eq!(payments.montos_por_moneda["USD"]["pagado_centavos"], 2500);
 }
 
+// This fixture is shared with Flutter: regenerate explicitly, then run this
+// test without UPDATE_API_CONTRACT_FIXTURES to verify the serialized contract.
+#[tokio::test]
+async fn flutter_shared_summary_fixture_matches_real_aggregation() {
+    let (_couch, db, service) = setup().await;
+    let today = Utc::now().date_naive();
+    {
+        let mut state = db.lock().unwrap();
+        state.page_cap = Some(2);
+        state.documents.insert(
+            "usuarios".into(),
+            vec![
+                json!({"_id":"usuario:pyme-1", "estado":"activo", "rol":"pyme"}),
+                json!({"_id":"usuario:pyme-2", "estado":"activo", "rol":"pyme"}),
+                json!({"_id":"usuario:pyme-3", "estado":"activo", "rol":"pyme"}),
+                json!({"_id":"usuario:inversionista", "estado":"activo", "rol":"inversionista"}),
+                json!({"_id":"usuario:admin", "estado":"activo", "rol":"administrador"}),
+            ],
+        );
+        state.documents.insert(
+            "empresas".into(),
+            vec![
+                json!({"_id":"empresa:activa-1", "estado":"activa"}),
+                json!({"_id":"empresa:activa-2", "estado":"activa"}),
+                json!({"_id":"empresa:pendiente", "estado":"pendiente"}),
+            ],
+        );
+        state.documents.insert(
+            "facturas".into(),
+            vec![
+                json!({"_id":"factura:pendiente-usd", "tipo":"factura", "estado":"pendiente_verificacion", "moneda":"USD", "monto_total_centavos":200000, "monto_financiado_centavos":0}),
+                json!({"_id":"factura:pendiente-eur", "tipo":"factura", "estado":"pendiente_verificacion", "moneda":"EUR", "monto_total_centavos":80000, "monto_financiado_centavos":0}),
+                json!({"_id":"factura:disponible", "tipo":"factura", "estado":"disponible", "moneda":"USD", "monto_total_centavos":100000, "monto_financiado_centavos":0}),
+            ],
+        );
+        state.documents.insert(
+            "ofertas".into(),
+            vec![
+                json!({"_id":"oferta:usd-1", "tipo":"oferta", "estado":"financiada", "moneda":"USD", "monto_objetivo":1000.0, "monto_recaudado":1000.0}),
+                json!({"_id":"oferta:usd-2", "tipo":"oferta", "estado":"financiada", "moneda":"USD", "monto_objetivo":500.0, "monto_recaudado":500.0}),
+                json!({"_id":"oferta:eur", "tipo":"oferta", "estado":"financiada", "moneda":"EUR", "monto_objetivo":240.0, "monto_recaudado":240.0}),
+            ],
+        );
+        state.documents.insert(
+            "operaciones".into(),
+            vec![
+                json!({"_id":"credito:contrato-activo", "tipo":"credito", "estado":"activo", "moneda":"USD", "capital_centavos":100000, "interes_centavos":1000, "total_centavos":101000, "pagado_centavos":40000, "fecha_vencimiento":today - chrono::Duration::days(5), "pagos":[{"id":"pago:contrato-01", "monto_centavos":40000}]}),
+                json!({"_id":"credito:contrato-pagado", "tipo":"credito", "estado":"pagado", "moneda":"USD", "capital_centavos":50000, "interes_centavos":2500, "total_centavos":52500, "pagado_centavos":52500, "fecha_vencimiento":today - chrono::Duration::days(6), "pagos":[{"id":"pago:contrato-02", "monto_centavos":25000}, {"id":"pago:contrato-03", "monto_centavos":27500}]}),
+                json!({"_id":"credito:contrato-eur", "tipo":"credito", "estado":"activo", "moneda":"EUR", "capital_centavos":24000, "interes_centavos":1200, "total_centavos":25200, "pagado_centavos":0, "fecha_vencimiento":today + chrono::Duration::days(13), "pagos":[]}),
+                json!({"_id":"inversion:usd-1", "tipo":"inversion", "estado":"confirmada", "moneda":"USD", "monto":600.0}),
+                json!({"_id":"inversion:usd-2", "tipo":"inversion", "estado":"confirmada", "moneda":"USD", "monto":400.0}),
+                json!({"_id":"inversion:usd-3", "tipo":"inversion", "estado":"liquidada", "moneda":"USD", "monto":500.0}),
+                json!({"_id":"inversion:eur", "tipo":"inversion", "estado":"confirmada", "moneda":"EUR", "monto":240.0}),
+            ],
+        );
+        state.documents.insert(
+            "auditoria".into(),
+            vec![
+                json!({"_id":"evento:credito", "tipo":"evento"}),
+                json!({"_id":"evento:pago", "tipo":"evento"}),
+            ],
+        );
+    }
+    let result = service.resumen(&user(Rol::Administrador)).await.unwrap();
+    let mut actual = serde_json::to_value(result).unwrap();
+    // Generation time is metadata; aggregation above still uses the real
+    // service with deliberately past-due/future input dates and short pages.
+    actual["generado_en"] = json!("2026-11-07T12:00:00Z");
+    let fixture_path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../Frontend/plataforma_credito/test/fixtures/api/administracion_resumen.json"
+    );
+    if std::env::var("UPDATE_API_CONTRACT_FIXTURES").as_deref() == Ok("1") {
+        std::fs::write(
+            fixture_path,
+            format!("{}\n", serde_json::to_string_pretty(&actual).unwrap()),
+        )
+        .unwrap();
+        return;
+    }
+    let expected: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../Frontend/plataforma_credito/test/fixtures/api/administracion_resumen.json"
+    )))
+    .unwrap();
+    assert_eq!(actual, expected);
+}
+
 #[test]
 fn legacy_companies_without_state_are_reported_as_pending() {
     let mut report = ReporteModulo::new(Modulo::Empresas);

@@ -9,4 +9,4 @@
 | 5. Créditos | Seguimiento, pagos simulados | Estados y cálculos | operaciones |
 | 6. Administración | Dashboard y reportes | Estadística y auditoría | auditoria |
 
-Los nombres y archivos son una propuesta organizativa. El desarrollo offline-first es transversal.
+Esta matriz describe la organización implementada. El modo local es transversal a las lecturas y a una cola limitada de empresas y facturas; las mutaciones financieras y administrativas permanecen en línea. Su alcance exacto está en [Trabajo local Windows](../integracion/offline_windows.md).

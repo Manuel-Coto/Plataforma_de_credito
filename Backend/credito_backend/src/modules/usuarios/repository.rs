@@ -1,4 +1,7 @@
-use super::{model::UsuarioDocumento, UsuarioError};
+use super::{
+    model::{Usuario, UsuarioDocumento},
+    UsuarioError,
+};
 use reqwest::{Client, Method, RequestBuilder, Response, StatusCode, Url};
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::{json, Value};
@@ -22,6 +25,12 @@ struct WriteResponse {
 #[derive(Deserialize)]
 struct FindResponse {
     docs: Vec<UsuarioDocumento>,
+}
+
+#[derive(Deserialize)]
+struct UsuariosResponse {
+    docs: Vec<Usuario>,
+    bookmark: String,
 }
 
 /// Una sola clave por correo canónico: PUT sin _rev crea de forma atómica.
@@ -179,6 +188,36 @@ impl UsuarioRepository {
             return Err(UsuarioError::Upstream);
         }
         Ok(document)
+    }
+
+    pub async fn list(
+        &self,
+        limit: u32,
+        bookmark: Option<String>,
+    ) -> Result<(Vec<Usuario>, String), UsuarioError> {
+        // Proyectar únicamente el perfil público: los hashes ni siquiera se solicitan.
+        let mut query = json!({
+            "selector": {"correo": {"$gte": ""}},
+            "limit": limit,
+            "use_index": ["usuarios-correo", "por-correo"],
+            "fields": ["_id", "nombre", "correo", "rol", "estado", "fecha_creacion", "fecha_actualizacion"]
+        });
+        if let Some(bookmark) = bookmark {
+            query["bookmark"] = json!(bookmark);
+        }
+        let response = Self::send(self.request(Method::POST, "_find").json(&query), false).await?;
+        let result: UsuariosResponse = Self::decode(response).await?;
+        if result.docs.len() > limit as usize
+            || result.docs.iter().any(|user| {
+                user.id.is_empty()
+                    || user.id.starts_with('_')
+                    || user.nombre.trim().is_empty()
+                    || user.correo.trim().is_empty()
+            })
+        {
+            return Err(UsuarioError::Upstream);
+        }
+        Ok((result.docs, result.bookmark))
     }
     pub async fn save(
         &self,

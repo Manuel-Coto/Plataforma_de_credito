@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../core/format.dart';
 import '../../../core/theme/credito_theme.dart';
@@ -71,27 +72,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       children: [
                                         _kpi(
                                             width,
-                                            'Operaciones',
-                                            '${resumen.totalOperaciones}',
+                                            'Créditos',
+                                            _value('${resumen.totalCreditos}'),
                                             Icons.swap_horiz_rounded,
                                             'En la plataforma'),
                                         _kpi(
                                             width,
-                                            'Monto total',
-                                            money(resumen.montoTotalCentavos),
+                                            'Total de créditos',
+                                            _currencyValues(resumen
+                                                .montosCreditosPorMoneda),
                                             Icons
                                                 .account_balance_wallet_outlined,
-                                            'En operaciones'),
+                                            'Importes separados por moneda'),
                                         _kpi(
                                             width,
                                             'Empresas verificadas',
-                                            '${resumen.empresasVerificadas}',
+                                            _value(
+                                                '${resumen.empresasVerificadas}'),
                                             Icons.business_outlined,
-                                            'Con revisión completa'),
+                                            'En estado activo'),
                                         _kpi(
                                             width,
                                             'Facturas pendientes',
-                                            '${resumen.facturasPendientes}',
+                                            _value(
+                                                '${resumen.facturasPendientes}'),
                                             Icons.receipt_long_outlined,
                                             'Por verificar'),
                                       ]);
@@ -105,7 +109,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
-                                          Text('El estado de las operaciones',
+                                          Text('Estado de los créditos',
                                               style: Theme.of(context)
                                                   .textTheme
                                                   .titleLarge),
@@ -120,7 +124,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                                 padding: EdgeInsets.symmetric(
                                                     vertical: 20),
                                                 child: Text(
-                                                    'Aún no hay operaciones para mostrar.',
+                                                    'Aún no hay créditos para mostrar.',
                                                     style: TextStyle(
                                                         color:
                                                             AppColors.muted))),
@@ -133,7 +137,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                                   Row(children: [
                                                     Expanded(
                                                         child: Text(
-                                                            estadoLegible(
+                                                            _estadoCredito(
                                                                 estado.key))),
                                                     const SizedBox(width: 12),
                                                     Text('${estado.value}',
@@ -149,12 +153,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                                               10),
                                                       child: LinearProgressIndicator(
                                                           value: resumen
-                                                                      .totalOperaciones <=
+                                                                      .totalCreditos <=
                                                                   0
                                                               ? 0
                                                               : (estado.value /
                                                                       resumen
-                                                                          .totalOperaciones)
+                                                                          .totalCreditos)
                                                                   .clamp(
                                                                       0.0, 1.0)
                                                                   .toDouble(),
@@ -173,7 +177,57 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _kpi(double width, String title, String value, IconData icon,
+  String _estadoCredito(String estado) => switch (estado) {
+        'activo' => 'Activo',
+        'pagado' => 'Pagado',
+        'vencido' => 'Vencido',
+        _ => estadoLegible(estado),
+      };
+
+  Widget _value(String value) => FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Text(value,
+          style: const TextStyle(
+              color: AppColors.ink,
+              fontSize: 30,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -1)));
+
+  Widget _currencyValues(Map<String, int> amounts) {
+    if (amounts.isEmpty) {
+      return const Text('Sin importes registrados',
+          style: TextStyle(color: AppColors.muted, fontSize: 15));
+    }
+    final currencies = amounts.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    final format = NumberFormat.currency(symbol: '', decimalDigits: 2);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      for (var i = 0; i < currencies.length; i++) ...[
+        if (i > 0) const SizedBox(height: 10),
+        Row(children: [
+          Text(currencies[i].key,
+              style: const TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700)),
+          const SizedBox(width: 10),
+          Expanded(
+              child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(format.format(currencies[i].value / 100),
+                      style: const TextStyle(
+                          color: AppColors.ink,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -.5)))),
+        ]),
+      ],
+    ]);
+  }
+
+  Widget _kpi(double width, String title, Widget value, IconData icon,
           String detail) =>
       SizedBox(
         width: width,
@@ -192,15 +246,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Icon(icon, color: AppColors.primary, size: 21),
               ]),
               const SizedBox(height: 24),
-              FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(value,
-                      style: const TextStyle(
-                          color: AppColors.ink,
-                          fontSize: 30,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -1))),
+              value,
               const SizedBox(height: 7),
               Text(detail,
                   style: const TextStyle(color: AppColors.muted, fontSize: 12)),

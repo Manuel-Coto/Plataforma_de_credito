@@ -28,20 +28,47 @@ impl EmpresaService {
         &self,
         user: &Usuario,
         input: EmpresaInput,
+        key: Option<&str>,
     ) -> Result<Empresa, EmpresaError> {
         if user.rol != Rol::Pyme {
             return Err(EmpresaError::Forbidden);
         }
         let input = validate(input)?;
         let repository = self.repository()?;
+        let request_id = key.map(|key| crate::idempotency::document_id("empresa", &user.id, key));
+        let fingerprint = crate::idempotency::fingerprint(serde_json::json!({
+            "nombre": input.nombre, "nit": input.nit, "correo": input.correo,
+            "telefono": input.telefono, "direccion": input.direccion
+        }));
+        if let Some(id) = &request_id {
+            match repository.get(id).await {
+                Ok(existing) => return replay(existing, &user.id, &fingerprint),
+                Err(EmpresaError::NotFound) => {}
+                Err(error) => return Err(error),
+            }
+        }
         if repository.nit_exists(&input.nit, None).await? {
+            if let Some(id) = &request_id {
+                if let Ok(existing) = repository.get(id).await {
+                    return replay(existing, &user.id, &fingerprint);
+                }
+            }
             return Err(EmpresaError::Duplicate);
         }
         let now = Utc::now();
         let document = EmpresaDocumento {
-            id: None,
+            id: request_id.clone(),
             rev: None,
-            extra: Default::default(),
+            extra: request_id
+                .as_ref()
+                .map(|_| {
+                    [(
+                        "solicitud_creacion_huella".into(),
+                        serde_json::json!(fingerprint),
+                    )]
+                    .into()
+                })
+                .unwrap_or_default(),
             datos: EmpresaDatos {
                 nombre: input.nombre,
                 nit: input.nit,
@@ -54,7 +81,15 @@ impl EmpresaService {
                 fecha_actualizacion: Some(now),
             },
         };
-        repository.save(document).await?.into_empresa()
+        match repository.save(document).await {
+            Ok(document) => document.into_empresa(),
+            Err(EmpresaError::Conflict) if request_id.is_some() => replay(
+                repository.get(request_id.as_deref().unwrap()).await?,
+                &user.id,
+                &fingerprint,
+            ),
+            Err(error) => Err(error),
+        }
     }
 
     pub async fn get(&self, user: &Usuario, id: &str) -> Result<(Empresa, String), EmpresaError> {
@@ -108,6 +143,7 @@ impl EmpresaService {
         user: &Usuario,
         id: &str,
         input: EmpresaInput,
+        revision: Option<&str>,
     ) -> Result<Empresa, EmpresaError> {
         require_access_role(user)?;
         validate_id(id)?;
@@ -115,6 +151,9 @@ impl EmpresaService {
         let repository = self.repository()?;
         let mut document = repository.get(id).await?;
         authorize_document(user, &document)?;
+        if revision.is_some_and(|expected| document.rev.as_deref() != Some(expected)) {
+            return Err(EmpresaError::PreconditionFailed);
+        }
         let changed = document.datos.nombre != input.nombre
             || document.datos.nit != input.nit
             || document.datos.correo != input.correo
@@ -194,6 +233,23 @@ impl EmpresaService {
         document.datos.fecha_actualizacion = Some(Utc::now());
         reviewed_response(repository.save(document).await?)
     }
+}
+
+fn replay(
+    document: EmpresaDocumento,
+    actor: &str,
+    fingerprint: &str,
+) -> Result<Empresa, EmpresaError> {
+    if document.datos.usuario_responsable_id.as_deref() != Some(actor)
+        || document
+            .extra
+            .get("solicitud_creacion_huella")
+            .and_then(serde_json::Value::as_str)
+            != Some(fingerprint)
+    {
+        return Err(EmpresaError::Conflict);
+    }
+    document.into_empresa()
 }
 
 fn reviewed_response(document: EmpresaDocumento) -> Result<(Empresa, String), EmpresaError> {

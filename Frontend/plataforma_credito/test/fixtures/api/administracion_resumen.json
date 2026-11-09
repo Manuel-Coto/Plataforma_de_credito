@@ -1,0 +1,126 @@
+{
+  "generado_en": "2026-11-07T12:00:00Z",
+  "reportes": [
+    {
+      "modulo": "usuarios",
+      "montos_por_moneda": {},
+      "por_estado": {
+        "activo": 5
+      },
+      "por_rol": {
+        "administrador": 1,
+        "inversionista": 1,
+        "pyme": 3
+      },
+      "total": 5
+    },
+    {
+      "modulo": "empresas",
+      "montos_por_moneda": {},
+      "por_estado": {
+        "activa": 2,
+        "pendiente": 1
+      },
+      "por_rol": {},
+      "total": 3
+    },
+    {
+      "modulo": "facturas",
+      "montos_por_moneda": {
+        "EUR": {
+          "financiado_centavos": 0,
+          "total_centavos": 80000
+        },
+        "USD": {
+          "financiado_centavos": 0,
+          "total_centavos": 300000
+        }
+      },
+      "por_estado": {
+        "disponible": 1,
+        "pendiente_verificacion": 2
+      },
+      "por_rol": {},
+      "total": 3
+    },
+    {
+      "modulo": "ofertas",
+      "montos_por_moneda": {
+        "EUR": {
+          "objetivo_centavos": 24000,
+          "recaudado_centavos": 24000
+        },
+        "USD": {
+          "objetivo_centavos": 150000,
+          "recaudado_centavos": 150000
+        }
+      },
+      "por_estado": {
+        "financiada": 3
+      },
+      "por_rol": {},
+      "total": 3
+    },
+    {
+      "modulo": "inversiones",
+      "montos_por_moneda": {
+        "EUR": {
+          "invertido_centavos": 24000
+        },
+        "USD": {
+          "invertido_centavos": 150000
+        }
+      },
+      "por_estado": {
+        "confirmada": 3,
+        "liquidada": 1
+      },
+      "por_rol": {},
+      "total": 4
+    },
+    {
+      "modulo": "creditos",
+      "montos_por_moneda": {
+        "EUR": {
+          "capital_centavos": 24000,
+          "interes_centavos": 1200,
+          "pagado_centavos": 0,
+          "saldo_centavos": 25200,
+          "total_centavos": 25200
+        },
+        "USD": {
+          "capital_centavos": 150000,
+          "interes_centavos": 3500,
+          "pagado_centavos": 92500,
+          "saldo_centavos": 61000,
+          "total_centavos": 153500
+        }
+      },
+      "por_estado": {
+        "activo": 1,
+        "pagado": 1,
+        "vencido": 1
+      },
+      "por_rol": {},
+      "total": 3
+    },
+    {
+      "modulo": "pagos",
+      "montos_por_moneda": {
+        "USD": {
+          "pagado_centavos": 92500
+        }
+      },
+      "por_estado": {},
+      "por_rol": {},
+      "total": 3
+    },
+    {
+      "modulo": "auditoria",
+      "montos_por_moneda": {},
+      "por_estado": {},
+      "por_rol": {},
+      "total": 2
+    }
+  ]
+}

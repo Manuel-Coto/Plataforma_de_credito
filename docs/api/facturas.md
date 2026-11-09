@@ -8,12 +8,12 @@ La estructura interna de la base está en [la documentación de facturas](../../
 
 | Método y ruta                            | PYME                         | Inversionista                     | Administrador                         | Respuesta exitosa           |
 | ---------------------------------------- | ---------------------------- | --------------------------------- | ------------------------------------- | --------------------------- |
-| `POST /api/facturas`                     | Crear para su empresa activa | No permitido                      | No permitido                          | `201`, factura creada.      |
-| `GET /api/facturas`                      | Solo facturas propias        | Todas las facturas                | Todas las facturas                    | `200`, página de facturas.  |
-| `GET /api/facturas/{id}`                 | Solo factura propia          | Puede consultar cualquier factura | Puede consultar cualquier factura     | `200`, factura.             |
+| `POST /api/facturas`                     | Crear para su empresa activa | No permitido                      | Crear para cualquier empresa          | `201`, factura creada.      |
+| `GET /api/facturas`                      | Solo facturas propias        | Disponibles, parcialmente financiadas o financiadas | Todas las facturas | `200`, página de facturas.  |
+| `GET /api/facturas/{id}`                 | Solo factura propia          | Solo los estados permitidos en el catálogo | Cualquier factura             | `200`, factura.             |
 | `PATCH /api/facturas/{id}/verificar-dte` | No permitido                 | No permitido                      | Registrar verificación administrativa | `200`, factura actualizada. |
 
-Las rutas protegidas requieren un JWT válido. Si el usuario no tiene el rol necesario, recibe `403`. Una PYME que intenta consultar una factura ajena recibe `404` para no revelar si existe.
+Las rutas protegidas requieren un JWT válido. Si el usuario no tiene el rol necesario, recibe 403. Una factura existente ajena a una PYME o fuera de los estados visibles al inversionista también produce 403 en el detalle. El filtro del inversionista se aplica en CouchDB antes de paginar, para que documentos no visibles no conviertan una página intermedia en una falsa página final.
 
 La verificación del DTE está reservada al administrador. En la implementación actual, esta operación registra el sello de recepción proporcionado y marca el DTE como verificado; no consulta automáticamente los servicios oficiales de Hacienda ni certifica por sí sola la autenticidad tributaria del documento.
 
@@ -49,6 +49,10 @@ Validaciones aplicadas:
 * No debe existir otra factura con el mismo código de generación del DTE.
 
 La creación asigna automáticamente el identificador, el usuario creador, las fechas iniciales, el importe financiado en cero y el estado `pendiente_verificacion`. El DTE comienza con `verificado: false`.
+
+La condición de empresa activa y propiedad corresponde a las PYMEs. El administrador puede crear para otra empresa y omite esas dos restricciones. En ese caso, creado_por identifica al administrador; no se reasigna a la PYME responsable, cuyo listado sigue filtrándose por creador.
+
+POST /api/facturas admite una Idempotency-Key opcional de 1 a 128 caracteres ASCII sin espacios. Repetir el mismo contenido normalizado con la misma cuenta y clave recupera la factura existente sin duplicarla ni revertir una verificación ya registrada. Cambiar el contenido reutilizando la clave devuelve 409. La huella de esta solicitud se almacena internamente y no aparece en la representación pública. La cola local conserva esa clave para cada creación; ver [Modo local](../integracion/offline_windows.md).
 
 Respuesta `201` de ejemplo:
 
@@ -90,7 +94,7 @@ Parámetros admitidos:
 
 | Parámetro  | Descripción                                                             |
 | ---------- | ----------------------------------------------------------------------- |
-| `limit`    | Cantidad de resultados. Predeterminado: `25`. Se admite de `1` a `100`. |
+| `limit`    | Cantidad de resultados. Predeterminado: `20`. Se admite de `1` a `100`. |
 | `bookmark` | Marcador opaco devuelto por CouchDB para continuar el recorrido.        |
 | `estado`   | Filtro opcional por estado de factura.                                  |
 
@@ -111,7 +115,7 @@ El ejemplo muestra una página vacía. Cuando existan resultados, `facturas` con
 El listado se filtra según el rol:
 
 * **PYME:** solo facturas cuyo `creado_por` corresponde al usuario autenticado.
-* **Inversionista:** todas las facturas.
+* **Inversionista:** facturas disponibles, parcialmente financiadas o financiadas; el filtro se aplica antes de paginar.
 * **Administrador:** todas las facturas.
 
 El filtro `estado` se puede combinar con `limit` y `bookmark`. Para continuar, enviar el marcador real codificado como parámetro URL y mantener el mismo límite. No interpretarlo como número de página. Se admiten marcadores de hasta 8192 bytes.
@@ -120,9 +124,9 @@ El filtro `estado` se puede combinar con `limit` y `bookmark`. Para continuar, e
 
 `GET /api/facturas/{id}` devuelve `200` con la factura encontrada. El identificador debe corresponder a una factura existente y válida.
 
-Las PYMEs solo pueden consultar sus propias facturas. Los inversionistas y administradores pueden consultar cualquier factura mediante esta ruta.
+Las PYMEs solo pueden consultar sus propias facturas. Los inversionistas pueden consultar los estados permitidos del catálogo; los administradores pueden consultar cualquier factura.
 
-Una factura inexistente devuelve `404`. Los identificadores vacíos, demasiado largos, con barras o caracteres de control se rechazan con `400`.
+Una factura inexistente devuelve 404. Un detalle existente fuera de los permisos del usuario devuelve 403.
 
 ## Verificar el DTE
 
@@ -144,7 +148,7 @@ El sello debe contener caracteres no blancos y tener un máximo de 256 bytes.
 
 Cuando la factura está en `pendiente_verificacion` y todavía no está verificada, la operación registra el sello, establece `dte.verificado` en `true`, asigna `dte.fecha_verificacion`, cambia el estado a `disponible` y actualiza `fecha_actualizacion`.
 
-Si el DTE ya aparece verificado, devuelve la factura sin efectuar una nueva escritura. Si la factura no está pendiente de verificación, devuelve `400`.
+Si el DTE ya aparece verificado o la factura no está pendiente de verificación, devuelve `409` sin efectuar una nueva escritura. El cliente debe consultar nuevamente antes de decidir; no se repite automáticamente la revisión.
 
 **Alcance importante:** este endpoint registra una decisión administrativa. No realiza una consulta externa a Hacienda ni verifica criptográficamente el DTE. Para usarlo en producción, deberá integrarse con una fuente oficial y comprobar su respuesta antes de marcar el documento como verificado.
 
@@ -157,7 +161,7 @@ El cuerpo de error tiene la forma `{"error":"mensaje"}`.
 | `400` | JSON, campos, fechas, identificador, filtro o sello inválidos. Corregir la solicitud. |
 | `401` | JWT ausente, inválido, vencido o usuario inactivo. Volver a iniciar sesión.           |
 | `403` | Rol sin permisos o empresa no autorizada para crear la factura.                       |
-| `404` | Factura inexistente o ajena a la PYME.                                                |
+| `404` | Factura inexistente.                                                                  |
 | `409` | DTE duplicado o conflicto de revisión al guardar. Consultar nuevamente.               |
 | `502` | Respuesta o documento incompatible de CouchDB.                                        |
 | `503` | Base de datos, configuración o índice Mango no disponible.                            |
