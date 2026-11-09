@@ -1,0 +1,39 @@
+name: credito-replicacion
+
+x-couchdb: &couchdb
+  image: couchdb:3.5.3
+  entrypoint:
+    - /bin/sh
+    - -ec
+    - |
+      cp /tmp/replicacion-single-node.ini /opt/couchdb/etc/local.d/20-single-node.ini
+      exec tini -- /docker-entrypoint.sh /opt/couchdb/bin/couchdb
+  environment:
+    COUCHDB_USER: ${COUCHDB_REPL_USER:?Define el usuario del laboratorio}
+    COUCHDB_PASSWORD: ${COUCHDB_REPL_PASSWORD:?Define la contrasena del laboratorio}
+  healthcheck:
+    test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5984/_up"]
+    interval: 2s
+    timeout: 3s
+    retries: 20
+
+services:
+  origen:
+    <<: *couchdb
+    ports:
+      - "127.0.0.1:15984:5984"
+    volumes:
+      - origen:/opt/couchdb/data
+      - ./single-node.ini:/tmp/replicacion-single-node.ini:ro
+
+  replica:
+    <<: *couchdb
+    ports:
+      - "127.0.0.1:25984:5984"
+    volumes:
+      - replica:/opt/couchdb/data
+      - ./single-node.ini:/tmp/replicacion-single-node.ini:ro
+
+volumes:
+  origen:
+  replica:
