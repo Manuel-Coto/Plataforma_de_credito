@@ -1,0 +1,20 @@
+# El contexto es la raiz del repositorio; incluir solo lo que usa este Dockerfile.
+**
+!Backend/
+!Backend/credito_backend/
+!Backend/credito_backend/Cargo.toml
+!Backend/credito_backend/Cargo.lock
+!Backend/credito_backend/src/
+!Backend/credito_backend/src/**
+!database/
+!database/**
+
+# Mantener secretos y artefactos fuera incluso si aparecen dentro de esas rutas.
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/target
+**/build

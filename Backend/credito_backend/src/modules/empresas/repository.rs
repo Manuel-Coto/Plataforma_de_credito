@@ -244,7 +244,10 @@ impl EmpresaRepository {
                 })
             })
             .collect::<Result<_, _>>()?;
-        Ok((documents, result.bookmark))
+        Ok((
+            documents,
+            crate::database::normalizar_bookmark(result.bookmark),
+        ))
     }
 
     pub async fn get(&self, id: &str) -> Result<EmpresaDocumento, EmpresaError> {

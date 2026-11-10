@@ -1,4 +1,43 @@
-# Replicación de CouchDB
+# Docker
+
+## Iniciar la aplicación
+
+Con Docker Desktop en ejecución, abre PowerShell en la raíz del repositorio.
+Prepara `Backend/credito_backend/.env` según el
+[README principal](../README.md#preparar-el-entorno-local): completa
+`COUCHDB_USERNAME`, `COUCHDB_PASSWORD` y una clave `JWT_SECRET` válida.
+Se usan las mismas credenciales para CouchDB y el backend.
+
+```powershell
+docker compose --env-file Backend/credito_backend/.env -f docker/docker-compose.yml up -d --build --wait
+```
+
+El argumento `--env-file` es necesario: Compose no busca automáticamente el
+`.env` dentro de `Backend/credito_backend`. Si falta una variable obligatoria,
+el comando muestra cuál debes completar antes de crear los contenedores.
+La URL interna de CouchDB se configura como `http://couchdb:5984`, y el backend
+espera a que CouchDB esté listo antes de iniciar.
+
+Comprueba el estado y los registros desde la raíz:
+
+```powershell
+docker compose --env-file Backend/credito_backend/.env -f docker/docker-compose.yml ps
+docker compose --env-file Backend/credito_backend/.env -f docker/docker-compose.yml logs --tail 100 backend
+Invoke-RestMethod http://127.0.0.1:3000/api/health
+```
+
+La API responde en [localhost:3000](http://127.0.0.1:3000/api/health) y Fauxton en
+[localhost:5984](http://127.0.0.1:5984/_utils/). El endpoint de salud solo confirma
+que la API responde; revisa los registros para comprobar la inicialización de
+las bases y sus índices.
+
+Para detener los contenedores y conservar los datos:
+
+```powershell
+docker compose --env-file Backend/credito_backend/.env -f docker/docker-compose.yml down
+```
+
+## Replicación de CouchDB
 
 La demo copia un documento ficticio del origen a la réplica y luego copia una
 actualización. Usa la [API nativa de CouchDB](https://docs.couchdb.org/en/stable/api/server/common.html#post--_replicate):

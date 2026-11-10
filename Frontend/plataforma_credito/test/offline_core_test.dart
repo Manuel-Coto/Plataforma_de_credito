@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -411,6 +412,52 @@ void main() {
         throwsA(isA<ApiException>()));
     expect(restored.operations, hasLength(1));
   });
+
+  test('DPAPI real: cargas desde 1 KiB hasta el presupuesto de 12 MiB',
+      () async {
+    if (!Platform.isWindows) return;
+    final cipher = WindowsDpapiCipher();
+    for (final size in [1024, 100 * 1024, 1024 * 1024, 12 * 1024 * 1024]) {
+      final plain = Uint8List(size);
+      for (var index = 0; index < size; index++) {
+        plain[index] = (index * 31 + 7) & 255;
+      }
+      final encrypted = await cipher.protect(plain);
+      expect(await cipher.unprotect(encrypted), orderedEquals(plain));
+    }
+  }, timeout: const Timeout(Duration(seconds: 60)));
+
+  test('DPAPI nativo conserva compatibilidad con archivos de PowerShell',
+      () async {
+    if (!Platform.isWindows) return;
+    final windows = Platform.environment['SystemRoot'] ?? r'C:\Windows';
+    final executable =
+        '$windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+    final cipher = WindowsDpapiCipher();
+    final plain = Uint8List.fromList(
+        utf8.encode('fixture-offline-compatibilidad-sin-credenciales'));
+    final native = await cipher.protect(plain);
+    // Only this synthetic fixture travels in the test command. Production
+    // calls use the native API and never put application data in argv.
+    final script = '\$ErrorActionPreference="Stop"; '
+        'Add-Type -AssemblyName System.Security; '
+        '\$entropy=[Text.Encoding]::UTF8.GetBytes("PlataformaCredito.offline.v1"); '
+        '\$scope=[Security.Cryptography.DataProtectionScope]::CurrentUser; '
+        '\$native=[Convert]::FromBase64String("${base64Encode(native)}"); '
+        '\$plain=[Security.Cryptography.ProtectedData]::Unprotect(\$native,\$entropy,\$scope); '
+        '\$legacy=[Security.Cryptography.ProtectedData]::Protect(\$plain,\$entropy,\$scope); '
+        '[Console]::Out.Write([Convert]::ToBase64String(\$plain)+":"+[Convert]::ToBase64String(\$legacy))';
+    final result = await Process.run(executable,
+            ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script],
+            runInShell: false)
+        .timeout(const Duration(seconds: 20));
+    expect(result.exitCode, 0, reason: 'Compatibilidad DPAPI con PowerShell');
+    final output = (result.stdout as String).trim().split(':');
+    expect(output, hasLength(2));
+    expect(base64Decode(output[0]), orderedEquals(plain));
+    expect(
+        await cipher.unprotect(base64Decode(output[1])), orderedEquals(plain));
+  }, timeout: const Timeout(Duration(seconds: 60)));
 
   test('DPAPI real: archivo cifrado, reapertura y sustitución sin texto plano',
       () async {

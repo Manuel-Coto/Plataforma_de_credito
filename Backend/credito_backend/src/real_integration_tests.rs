@@ -381,10 +381,35 @@ async fn real_couchdb_isolated_six_module_lifecycle() {
         let users = body(client.get(format!("{}/api/usuarios?limit=1", api.url)).bearer_auth(&admin_token), StatusCode::OK).await;
         assert_eq!(users["usuarios"].as_array().unwrap().len(), 1);
         assert!(users["usuarios"][0].get("password_hash").is_none());
+        // Exercise the actual Mango indexes for both owner-scoped and admin lists.
+        // The mocked repository tests cannot detect an incompatible CouchDB sort.
+        for token in [&pyme_token, &admin_token] {
+            let empty = body(client.get(format!("{}/api/empresas", api.url)).bearer_auth(token), StatusCode::OK).await;
+            assert!(empty["empresas"].as_array().unwrap().is_empty());
+            assert_eq!(empty["bookmark"], "", "Una lista vacía no debe devolver el sentinel interno nil de CouchDB");
+        }
+        for (route, token) in [
+            ("/api/facturas", &pyme_token),
+            ("/api/ofertas", &investor_token),
+            ("/api/inversiones", &investor_token),
+            ("/api/creditos", &pyme_token),
+            ("/api/administracion/auditoria", &admin_token),
+        ] {
+            let empty = body(client.get(format!("{}{route}", api.url)).bearer_auth(token), StatusCode::OK).await;
+            assert_eq!(empty["bookmark"], "", "Un listado vacío debe terminar sin reenviar nil: {route}");
+        }
         let company_data = json!({"nombre":"Empresa ficticia aislada", "nit":"000000001", "correo":"empresa@isolated.example", "telefono":"22223344", "direccion":"Dirección exclusivamente ficticia"});
         let company = body(client.post(format!("{}/api/empresas", api.url)).bearer_auth(&pyme_token)
             .header("Idempotency-Key", "real-empresa-1").json(&company_data), StatusCode::CREATED).await;
         let company_id = company["id"].as_str().unwrap();
+        for token in [&pyme_token, &admin_token] {
+            let page = body(client.get(format!("{}/api/empresas?limit=1", api.url)).bearer_auth(token), StatusCode::OK).await;
+            assert_eq!(page["empresas"].as_array().unwrap().len(), 1);
+            assert_eq!(page["empresas"][0]["id"], company["id"]);
+            let next = body(client.get(format!("{}/api/empresas", api.url)).bearer_auth(token)
+                .query(&[("limit", "1"), ("bookmark", page["bookmark"].as_str().unwrap())]), StatusCode::OK).await;
+            assert!(next["empresas"].as_array().unwrap().is_empty());
+        }
         let same_company = body(client.post(format!("{}/api/empresas", api.url)).bearer_auth(&pyme_token)
             .header("Idempotency-Key", "real-empresa-1").json(&company_data), StatusCode::CREATED).await;
         assert_eq!(same_company["id"], company["id"]);

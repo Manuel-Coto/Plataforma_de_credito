@@ -67,7 +67,7 @@ GET /api/inversiones admite limit y bookmark; aplica la propiedad del usuario en
 {"inversiones": [], "bookmark": "<cursor opaco>", "limit": 20}
 ```
 
-Conservar los filtros al paginar. El bookmark es opaco; una página vacía termina el recorrido. Una página corta no demuestra que se haya llegado al final.
+Conservar los filtros al paginar. El bookmark es opaco; una página vacía con un cursor nuevo válido permite continuar. Una página corta no demuestra que se haya llegado al final.
 
 ## Aportar y reintentar sin duplicar
 
@@ -108,3 +108,7 @@ cerrada, cancelada, reembolsada y fallida existen en los modelos, pero su existe
 400 indica campos, importe, fecha o clave inválidos; 401 exige iniciar sesión; 403 indica rol insuficiente; 404 indica documento inexistente; 409 indica clave/contenido incompatible, oferta sin saldo o estado incompatible. 502 señala datos de CouchDB incompatibles y 503 un servicio, conexión o índice no disponible.
 
 No reintentar errores de validación como si fueran desconexiones. Inversiones y recuperación se ejecutan en línea; la cola local de empresas/facturas no envía aportes financieros.
+
+## Fin de paginación
+
+Conservar los filtros y el límite al continuar. Terminar cuando bookmark sea una cadena vacía o se repita un cursor ya recibido. Una página corta o vacía con un cursor nuevo válido permite continuar. La API representa la ausencia de cursor como una cadena vacía; el sentinel interno nil de CouchDB no se devuelve como cursor público.

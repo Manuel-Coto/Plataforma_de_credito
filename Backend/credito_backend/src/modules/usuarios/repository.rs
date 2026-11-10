@@ -217,7 +217,10 @@ impl UsuarioRepository {
         {
             return Err(UsuarioError::Upstream);
         }
-        Ok((result.docs, result.bookmark))
+        Ok((
+            result.docs,
+            crate::database::normalizar_bookmark(result.bookmark),
+        ))
     }
     pub async fn save(
         &self,

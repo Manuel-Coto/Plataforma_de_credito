@@ -71,7 +71,7 @@ Parámetros opcionales: `limit` (1–100, predeterminado 25), `bookmark` (máxim
 }
 ```
 
-Para continuar, enviar el `bookmark` anterior y conservar los mismos filtros; finalizar al recibir una página vacía. El orden corresponde al índice elegido por CouchDB, sin garantía de orden cronológico. El cliente debe tratar el bookmark como un valor opaco y codificarlo en la URL.
+Para continuar, enviar el `bookmark` anterior y conservar los mismos filtros; continuar incluso con una página vacía si llega un cursor nuevo válido. El orden corresponde al índice elegido por CouchDB, sin garantía de orden cronológico. El cliente debe tratar el bookmark como un valor opaco y codificarlo en la URL.
 
 La base `auditoria` contiene documentos `tipo: "evento"`. Solo se exponen identificadores, acción, recurso, fecha y detalles estructurales permitidos: `estado_anterior`, `estado_nuevo`, `moneda`, `credito_id`, `pago_id`, `oferta_id`, `factura_id`, `empresa_id`, `monto_centavos`. No se devuelven propiedades arbitrarias, perfiles completos, contraseñas ni tokens.
 
@@ -86,3 +86,7 @@ La gestión de usuarios usa los endpoints del [módulo Usuarios](usuarios.md#ges
 ## Errores
 
 Los errores usan `{ "error": "mensaje" }`: `400` para consultas inválidas, `401` para autenticación ausente/incorrecta o usuario inactivo, `403` para rol insuficiente, `503` para configuración o base no disponible y `502` para respuestas incompatibles de CouchDB. No se exponen credenciales ni mensajes internos del servidor de base de datos.
+
+## Fin de paginación
+
+Conservar los filtros y el límite al continuar. Terminar cuando bookmark sea una cadena vacía o se repita un cursor ya recibido. Una página corta o vacía con un cursor nuevo válido permite continuar. La API representa la ausencia de cursor como una cadena vacía; el sentinel interno nil de CouchDB no se devuelve como cursor público.

@@ -74,10 +74,14 @@ impl AdministracionRepository {
                 }
             })?;
         match response.status() {
-            StatusCode::OK => response
-                .json()
-                .await
-                .map_err(|_| AdministracionError::Upstream),
+            StatusCode::OK => {
+                let mut page: FindResponse = response
+                    .json()
+                    .await
+                    .map_err(|_| AdministracionError::Upstream)?;
+                page.bookmark = crate::database::normalizar_bookmark(page.bookmark);
+                Ok(page)
+            }
             StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
                 Err(AdministracionError::Configuration)
             }

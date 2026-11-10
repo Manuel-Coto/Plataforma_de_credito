@@ -52,3 +52,7 @@ Este alcance es específico de Windows. No demuestra soporte offline en Web, And
 El 8 de noviembre de 2026 se aprobaron las 14 pruebas de `test/offline_core_test.dart` en Windows. Incluyeron DPAPI real: archivo cifrado sin contenido legible, reapertura y reemplazo, además de recuperación de pendientes, aislamiento, permisos y concurrencia. Desde `Frontend/plataforma_credito` se ejecutan con `flutter test --no-pub test/offline_core_test.dart`.
 
 Las pruebas unitarias y de interfaz usan transporte y persistencia controlados para comprobar caché, permisos, conflictos, reintentos, purgas y avisos. La comprobación real de DPAPI debe ejecutarse en Windows. El [recorrido CouchDB real](couchdb_real.md) verifica los endpoints e idempotencia de la API en seis bases aisladas; no acredita por sí solo la persistencia DPAPI del cliente.
+
+## Verificación actualizada: 9 de noviembre de 2026
+
+La suite completa Flutter terminó con 98 pruebas aprobadas y flutter analyze sin incidencias. Incluye DPAPI nativo en un isolate, cargas desde 1 KiB hasta 12 MiB y compatibilidad bidireccional con el formato previo de PowerShell. También se verificaron los botones de login/registro y el bloqueo compartido por Retry-After. Esta evidencia automatizada no acredita una pasada manual completa de todas las pantallas.

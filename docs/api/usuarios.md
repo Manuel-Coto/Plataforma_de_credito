@@ -103,7 +103,7 @@ Flutter permite editar el nombre desde Mi cuenta. Mientras el PUT está pendient
 
 ## Gestión administrativa de usuarios
 
-GET /api/usuarios admite limit entre 1 y 100 (25 por defecto) y bookmark opaco de hasta 8192 bytes. Responde con usuarios, bookmark y limit. El listado solicita a CouchDB únicamente campos públicos: no solicita ni devuelve hashes, contraseñas o revisiones. Una página vacía termina el recorrido; no usar el tamaño de una página corta como señal de fin.
+GET /api/usuarios admite limit entre 1 y 100 (25 por defecto) y bookmark opaco de hasta 8192 bytes. Responde con usuarios, bookmark y limit. El listado solicita a CouchDB únicamente campos públicos: no solicita ni devuelve hashes, contraseñas o revisiones. Una página vacía con un cursor nuevo válido permite continuar; no usar el tamaño de una página corta como señal de fin.
 
 Para cambiar permisos, consultar GET /api/usuarios/{id}, conservar su cabecera ETag y enviar:
 
@@ -159,3 +159,11 @@ Usar `http://127.0.0.1:3000` si Flutter y Rust se ejecutan en el mismo equipo. R
 El cliente actual mantiene el token exclusivamente en memoria: no lo persiste en su archivo cifrado ni en la cola de cambios. No escribir tokens o contraseñas en logs, archivos de configuración ni preferencias. Al cerrar sesión se eliminan también instantáneas y pendientes del contexto anterior; el backend no revoca el JWT y puede seguir válido hasta expirar. Ante 401, limpiar la sesión y pedir login; ante 403, mostrar falta de permisos sin usar datos guardados como sustituto. Respetar Retry-After en 429 y distinguir validación, conflicto y disponibilidad. No conectar Flutter directamente a CouchDB ni darle sus credenciales. Ver [Modo local](../integracion/offline_windows.md).
 
 Flutter Web necesita CORS por separado: origen permitido, métodos usados, cabeceras `Content-Type`, `Authorization`, `If-Match` y exposición de `ETag`. El backend actual no configura CORS. HTTP y escucha local corresponden al prototipo; un despliegue remoto requiere HTTPS y configuración de red propia.
+
+## Fin de paginación
+
+Conservar los filtros y el límite al continuar. Terminar cuando bookmark sea una cadena vacía o se repita un cursor ya recibido. Una página corta o vacía con un cursor nuevo válido permite continuar. La API representa la ausencia de cursor como una cadena vacía; el sentinel interno nil de CouchDB no se devuelve como cursor público.
+
+## Espera ante demasiados intentos
+
+Al recibir HTTP 429, Flutter conserva Retry-After (segundos o fecha HTTP), bloquea los envíos de login y registro y muestra una cuenta regresiva. La espera se comparte entre ambos formularios durante la ejecución. Si la cabecera falta o es inválida se aplican 60 segundos. Los datos del formulario se conservan y el botón se habilita al finalizar.

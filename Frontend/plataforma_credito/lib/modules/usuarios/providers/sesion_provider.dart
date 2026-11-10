@@ -11,6 +11,8 @@ class SesionProvider extends ChangeNotifier {
   final ApiClient api;
   Map<String, dynamic>? _usuario;
   Timer? _temporizador;
+  Timer? _reintento;
+  int _esperaAutenticacion = 0;
   DateTime? _vence;
   int _version = 0;
   bool _ocupado = false;
@@ -21,7 +23,37 @@ class SesionProvider extends ChangeNotifier {
 
   Map<String, dynamic>? get usuario => _usuario;
   bool get autenticado => _usuario != null;
-  bool get ocupado => _ocupado;
+  bool get ocupado => _ocupado || _esperaAutenticacion > 0;
+  int get esperaAutenticacion => _esperaAutenticacion;
+
+  Future<dynamic> _solicitarAutenticacion(
+      String ruta, Map<String, dynamic> datos) async {
+    if (_esperaAutenticacion > 0) {
+      throw ApiException(
+          'Espera $_esperaAutenticacion segundos para reintentar.',
+          429,
+          Duration(seconds: _esperaAutenticacion));
+    }
+    try {
+      return await api.post(ruta, datos);
+    } on ApiException catch (error) {
+      if (error.status == 429 && !_disposed) {
+        final delay = error.retryAfter ?? const Duration(seconds: 60);
+        _esperaAutenticacion = (delay.inMilliseconds / 1000).ceil();
+        _reintento?.cancel();
+        if (_esperaAutenticacion > 0) {
+          _reintento = Timer.periodic(const Duration(seconds: 1), (timer) {
+            _esperaAutenticacion--;
+            if (_esperaAutenticacion <= 0) timer.cancel();
+            if (!_disposed) notifyListeners();
+          });
+        }
+        notifyListeners();
+      }
+      rethrow;
+    }
+  }
+
   int get version => _version;
   bool get guardandoPerfil => _guardandoPerfil;
 
@@ -32,7 +64,7 @@ class SesionProvider extends ChangeNotifier {
     mensaje = null;
     notifyListeners();
     try {
-      final datos = await api.post('/api/auth/login', {
+      final datos = await _solicitarAutenticacion('/api/auth/login', {
         'correo': correo.trim(),
         'password': password,
       });
@@ -77,7 +109,7 @@ class SesionProvider extends ChangeNotifier {
   }
 
   Future<void> registrar(Map<String, String> datos) async {
-    await api.post('/api/auth/register', datos);
+    await _solicitarAutenticacion('/api/auth/register', datos);
   }
 
   Future<void> actualizarPerfil(String nombre) async {
@@ -170,6 +202,7 @@ class SesionProvider extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _reintento?.cancel();
     _temporizador?.cancel();
     api.onUnauthorized = null;
     _vence = null;

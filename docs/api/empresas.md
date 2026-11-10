@@ -88,7 +88,7 @@ Respuesta `200` de ejemplo:
 }
 ```
 
-El bookmark del ejemplo es un marcador. Para continuar, enviar el valor real codificado como parámetro URL: `GET /api/empresas?limit=10&bookmark=...`. No interpretarlo ni compartirlo entre sesiones; mantener el mismo límite. Se admiten hasta 8192 bytes. Una página vacía indica fin de recorrido; el bookmark no es un número de página. No hay filtro de estado en esta API: el listado también incluye empresas rechazadas e inactivas según permisos.
+El bookmark del ejemplo es un marcador. Para continuar, enviar el valor real codificado como parámetro URL: `GET /api/empresas?limit=10&bookmark=...`. No interpretarlo ni compartirlo entre sesiones; mantener el mismo límite. Se admiten hasta 8192 bytes. Una página vacía con un cursor nuevo válido no indica fin de recorrido; el bookmark no es un número de página. No hay filtro de estado en esta API: el listado también incluye empresas rechazadas e inactivas según permisos.
 
 ## Consulta y revisión administrativa
 
@@ -147,3 +147,7 @@ El cuerpo de error es `{"error":"mensaje"}`; por ejemplo, una PYME que intenta a
 | `503` | Servicio, conexión, configuración o índice no disponible. |
 
 En Flutter Desktop usar la URL local y el flujo de token descrito en [Usuarios](usuarios.md#integración-con-flutter-desktop). Guardar el ETag del GET junto a la empresa y reemplazarlo con el recibido después de una decisión. No quitar comillas ni usar la fecha como revisión. Tras editar, consultar nuevamente antes de revisar. Adaptar la interfaz al rol, aunque el backend sigue comprobando los permisos. Flutter Web requiere configurar CORS por separado para enviar If-Match y leer ETag.
+
+## Fin de paginación
+
+Conservar los filtros y el límite al continuar. Terminar cuando bookmark sea una cadena vacía o se repita un cursor ya recibido. Una página corta o vacía con un cursor nuevo válido permite continuar. La API representa la ausencia de cursor como una cadena vacía; el sentinel interno nil de CouchDB no se devuelve como cursor público.

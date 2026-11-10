@@ -5,8 +5,15 @@ services:
     restart: unless-stopped
 
     environment:
-      COUCHDB_USER: ${COUCHDB_USERNAME}
-      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
+      COUCHDB_USER: ${COUCHDB_USERNAME:?Usa --env-file Backend/credito_backend/.env y define COUCHDB_USERNAME}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD:?Define COUCHDB_PASSWORD en Backend/credito_backend/.env}
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5984/_up"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
 
     ports:
       - "5984:5984"
@@ -26,13 +33,14 @@ services:
     restart: unless-stopped
 
     depends_on:
-      - couchdb
+      couchdb:
+        condition: service_healthy
 
     environment:
       COUCHDB_URL: http://couchdb:5984
-      COUCHDB_USERNAME: ${COUCHDB_USERNAME}
-      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
-      JWT_SECRET: ${JWT_SECRET}
+      COUCHDB_USERNAME: ${COUCHDB_USERNAME:?Define COUCHDB_USERNAME en Backend/credito_backend/.env}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD:?Define COUCHDB_PASSWORD en Backend/credito_backend/.env}
+      JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET en Backend/credito_backend/.env}
       JWT_TTL_SECONDS: ${JWT_TTL_SECONDS:-3600}
 
     ports:

@@ -493,7 +493,21 @@ class ApiClient {
         message = data['error'] as String;
       }
     } on FormatException {/* Non-JSON errors never become successful data. */}
-    throw ApiException(message, response.statusCode);
+    Duration? retryAfter;
+    if (response.statusCode == 429) {
+      final value = response.headers['retry-after'];
+      final seconds = int.tryParse(value ?? '');
+      if (seconds != null && seconds >= 0) {
+        retryAfter = Duration(seconds: seconds);
+      } else if (value != null) {
+        try {
+          final wait = HttpDate.parse(value).difference(DateTime.now().toUtc());
+          retryAfter = wait.isNegative ? Duration.zero : wait;
+        } on HttpException {/* Use the server's default if malformed. */}
+      }
+      retryAfter ??= const Duration(seconds: 60);
+    }
+    throw ApiException(message, response.statusCode, retryAfter);
   }
 }
 

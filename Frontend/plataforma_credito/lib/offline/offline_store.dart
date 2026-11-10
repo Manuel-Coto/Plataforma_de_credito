@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 abstract interface class OfflineStore {
@@ -39,53 +41,117 @@ abstract interface class OfflineCipher {
   Future<Uint8List> unprotect(Uint8List bytes);
 }
 
-/// DPAPI CurrentUser. Payload travels only through stdin/stdout, never argv,
-/// temporary plaintext, an environment variable, or a script containing data.
+/// DPAPI CurrentUser, called directly in a worker isolate. Plaintext remains in
+/// process memory; native buffers are cleared and released after the call.
 class WindowsDpapiCipher implements OfflineCipher {
   Future<Uint8List> _run(Uint8List bytes, bool decrypt) async {
     if (!Platform.isWindows) {
       throw const FileSystemException('DPAPI requiere Windows.');
     }
-    final windows = Platform.environment['SystemRoot'] ?? r'C:\Windows';
-    final executable =
-        '$windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
-    final action = decrypt ? 'Unprotect' : 'Protect';
-    final script =
-        '\$ErrorActionPreference="Stop"; Add-Type -AssemblyName System.Security; '
-        '\$inputBytes=[Convert]::FromBase64String([Console]::In.ReadToEnd()); '
-        '\$entropy=[Text.Encoding]::UTF8.GetBytes("PlataformaCredito.offline.v1"); '
-        '\$result=[Security.Cryptography.ProtectedData]::$action(\$inputBytes,\$entropy,[Security.Cryptography.DataProtectionScope]::CurrentUser); '
-        '[Console]::Out.Write([Convert]::ToBase64String(\$result))';
-    final process = await Process.start(executable,
-        ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script],
-        runInShell: false);
-    final output = process.stdout.transform(utf8.decoder).join();
-    // Never expose process errors: a crypto/provider failure must not echo input.
-    final errors = process.stderr.drain<void>();
-    process.stdin.write(base64Encode(bytes));
-    await process.stdin.close();
-    int exit;
     try {
-      exit = await process.exitCode.timeout(const Duration(seconds: 20));
+      return await Isolate.run(
+          () => _WindowsDpapiBindings().transform(bytes, decrypt));
     } on Object {
-      process.kill();
-      await errors;
+      // Provider and allocation errors must never include the protected data.
       throw const FileSystemException(
           'No se pudo proteger el almacenamiento local.');
     }
-    final encoded = await output;
-    await errors;
-    if (exit != 0) {
-      throw const FileSystemException(
-          'No se pudo proteger el almacenamiento local.');
-    }
-    return Uint8List.fromList(base64Decode(encoded.trim()));
   }
 
   @override
   Future<Uint8List> protect(Uint8List bytes) => _run(bytes, false);
   @override
   Future<Uint8List> unprotect(Uint8List bytes) => _run(bytes, true);
+}
+
+final class _DataBlob extends Struct {
+  @Uint32()
+  external int size;
+  external Pointer<Uint8> data;
+}
+
+typedef _LocalAllocNative = Pointer<Void> Function(Uint32, UintPtr);
+typedef _LocalAllocDart = Pointer<Void> Function(int, int);
+typedef _LocalFreeNative = Pointer<Void> Function(Pointer<Void>);
+typedef _LocalFreeDart = Pointer<Void> Function(Pointer<Void>);
+typedef _CryptNative = Int32 Function(
+    Pointer<_DataBlob>,
+    Pointer<Void>,
+    Pointer<_DataBlob>,
+    Pointer<Void>,
+    Pointer<Void>,
+    Uint32,
+    Pointer<_DataBlob>);
+typedef _CryptDart = int Function(Pointer<_DataBlob>, Pointer<Void>,
+    Pointer<_DataBlob>, Pointer<Void>, Pointer<Void>, int, Pointer<_DataBlob>);
+
+class _WindowsDpapiBindings {
+  final _crypt = DynamicLibrary.open('Crypt32.dll');
+  final _kernel = DynamicLibrary.open('Kernel32.dll');
+  late final _allocate =
+      _kernel.lookupFunction<_LocalAllocNative, _LocalAllocDart>('LocalAlloc');
+  late final _free =
+      _kernel.lookupFunction<_LocalFreeNative, _LocalFreeDart>('LocalFree');
+  late final _protect =
+      _crypt.lookupFunction<_CryptNative, _CryptDart>('CryptProtectData');
+  late final _unprotect =
+      _crypt.lookupFunction<_CryptNative, _CryptDart>('CryptUnprotectData');
+
+  Uint8List transform(Uint8List bytes, bool decrypt) {
+    final allocations = <Pointer<Void>>[];
+    final buffers = <Uint8List>[];
+    Pointer<Void> allocate(int size) {
+      // LMEM_FIXED | LMEM_ZEROINIT; LocalFree also owns the DPAPI output.
+      final pointer = _allocate(0x0040, size);
+      if (pointer == nullptr) {
+        throw const FileSystemException(
+            'No se pudo asignar memoria protegida.');
+      }
+      allocations.add(pointer);
+      return pointer;
+    }
+
+    Pointer<_DataBlob> blob(Uint8List contents) {
+      final pointer = allocate(sizeOf<_DataBlob>()).cast<_DataBlob>();
+      pointer.ref.size = contents.length;
+      pointer.ref.data =
+          allocate(contents.isEmpty ? 1 : contents.length).cast<Uint8>();
+      final buffer = pointer.ref.data.asTypedList(contents.length);
+      buffers.add(buffer);
+      buffer.setAll(0, contents);
+      return pointer;
+    }
+
+    Pointer<_DataBlob>? output;
+    try {
+      final input = blob(bytes);
+      // Keep the same entropy and CurrentUser scope as existing .dpapi files.
+      final entropy =
+          blob(Uint8List.fromList(utf8.encode('PlataformaCredito.offline.v1')));
+      output = allocate(sizeOf<_DataBlob>()).cast<_DataBlob>();
+      final succeeded = (decrypt ? _unprotect : _protect)(
+          input, nullptr, entropy, nullptr, nullptr, 1, output);
+      // CRYPTPROTECT_UI_FORBIDDEN; no machine-scope flag is set.
+      if (succeeded == 0) {
+        throw const FileSystemException(
+            'DPAPI no pudo completar la operación.');
+      }
+      return Uint8List.fromList(output.ref.data.asTypedList(output.ref.size));
+    } finally {
+      if (output != null && output.ref.data != nullptr) {
+        output.ref.data
+            .asTypedList(output.ref.size)
+            .fillRange(0, output.ref.size, 0);
+        _free(output.ref.data.cast<Void>());
+      }
+      for (final buffer in buffers) {
+        buffer.fillRange(0, buffer.length, 0);
+      }
+      for (final pointer in allocations.reversed) {
+        _free(pointer);
+      }
+    }
+  }
 }
 
 class EncryptedFileOfflineStore implements OfflineStore {

@@ -226,7 +226,10 @@ impl InversionRepository {
         if found.docs.len() > limit as usize {
             return Err(InversionError::Upstream);
         }
-        Ok((found.docs, found.bookmark))
+        Ok((
+            found.docs,
+            crate::database::normalizar_bookmark(found.bookmark),
+        ))
     }
 
     pub async fn save_oferta(&self, mut oferta: Oferta) -> Result<Oferta, InversionError> {
@@ -293,7 +296,10 @@ impl InversionRepository {
             .await
             .map_err(|_| InversionError::Upstream)?;
 
-        Ok((found.docs, found.bookmark))
+        Ok((
+            found.docs,
+            crate::database::normalizar_bookmark(found.bookmark),
+        ))
     }
 
     pub async fn listar_inversiones(
@@ -340,6 +346,9 @@ impl InversionRepository {
             .await
             .map_err(|_| InversionError::Upstream)?;
 
-        Ok((found.docs, found.bookmark))
+        Ok((
+            found.docs,
+            crate::database::normalizar_bookmark(found.bookmark),
+        ))
     }
 }

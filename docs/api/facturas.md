@@ -173,3 +173,7 @@ Usar `http://127.0.0.1:3000` cuando Flutter y Rust se ejecuten en el mismo equip
 En los formularios, convertir el importe a centavos antes de enviarlo. Enviar las fechas en formato `AAAA-MM-DD` y la moneda como `USD`. La interfaz puede ocultar operaciones que no correspondan al rol, pero el backend sigue siendo responsable de validar los permisos.
 
 No conectar Flutter directamente a CouchDB ni incluir sus credenciales en la aplicación. En Flutter Web, configurar CORS por separado si se habilita el acceso desde navegador.
+
+## Fin de paginación
+
+Conservar los filtros y el límite al continuar. Terminar cuando bookmark sea una cadena vacía o se repita un cursor ya recibido. Una página corta o vacía con un cursor nuevo válido permite continuar. La API representa la ausencia de cursor como una cadena vacía; el sentinel interno nil de CouchDB no se devuelve como cursor público.

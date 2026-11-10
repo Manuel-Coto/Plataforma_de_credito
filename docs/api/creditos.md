@@ -182,3 +182,7 @@ El cuerpo de error tiene la forma `{"error":"mensaje"}`.
 | `503` | Configuración, conexión o servicio de datos no disponible. |
 
 La confirmación y las mutaciones rechazan condiciones incompatibles antes de comprometer el cambio principal. Si la respuesta fue exitosa con sincronización pendiente, se utiliza el mecanismo de recuperación descrito arriba.
+
+## Fin de paginación
+
+Conservar los filtros y el límite al continuar. Terminar cuando bookmark sea una cadena vacía o se repita un cursor ya recibido. Una página corta o vacía con un cursor nuevo válido permite continuar. La API representa la ausencia de cursor como una cadena vacía; el sentinel interno nil de CouchDB no se devuelve como cursor público.

@@ -126,7 +126,10 @@ impl CreditoRepository {
             return Err(Self::error(response.status()));
         }
         let found: FindResponse<T> = response.json().await.map_err(|_| CreditoError::Upstream)?;
-        Ok((found.docs, found.bookmark))
+        Ok((
+            found.docs,
+            crate::database::normalizar_bookmark(found.bookmark),
+        ))
     }
 
     pub(super) async fn all<T: DeserializeOwned>(

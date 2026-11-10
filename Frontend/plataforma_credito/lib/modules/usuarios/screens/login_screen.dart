@@ -72,6 +72,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       Expanded(
                         child: RegistroUsuarioScreen(
+                          esperaAutenticacion: sesion.esperaAutenticacion,
                           onGuardar: sesion.registrar,
                           onCreado: (correo) => setState(() {
                             _correo.text = correo;
@@ -242,9 +243,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             children: [
                               Flexible(
                                 child: Text(
-                                  sesion.ocupado
-                                      ? 'Ingresando...'
-                                      : 'Iniciar sesión',
+                                  sesion.esperaAutenticacion > 0
+                                      ? 'Reintentar en ${sesion.esperaAutenticacion} s'
+                                      : sesion.ocupado
+                                          ? 'Ingresando...'
+                                          : 'Iniciar sesión',
                                   textAlign: TextAlign.center,
                                 ),
                               ),

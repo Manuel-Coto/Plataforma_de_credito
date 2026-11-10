@@ -21,6 +21,7 @@ struct MockDb {
     failure: Option<StatusCode>,
     malformed: bool,
     missing_index: bool,
+    bookmark_override: Option<String>,
     ignore_owner: bool,
     race_on_update: bool,
 }
@@ -81,9 +82,13 @@ async fn find(State(state): State<Db>, headers: HeaderMap, Json(query): Json<Val
         .take(limit)
         .cloned()
         .collect();
+    let bookmark = db
+        .bookmark_override
+        .clone()
+        .unwrap_or_else(|| (offset + docs.len()).to_string());
     (
         StatusCode::OK,
-        Json(json!({"bookmark": (offset + docs.len()).to_string(), "docs": docs})),
+        Json(json!({"bookmark": bookmark, "docs": docs})),
     )
 }
 
@@ -1379,6 +1384,27 @@ async fn missing_mango_index_is_distinguished_from_invalid_documents() {
     let page: Value = response.json().await.unwrap();
     assert_eq!(page["empresas"].as_array().unwrap().len(), 1);
     assert_eq!(page["empresas"][0]["id"], created["id"]);
+}
+
+#[tokio::test]
+async fn mango_empty_pages_normalize_only_terminal_nil_bookmark() {
+    let (api, _couch, db) = setup().await;
+    for (upstream, expected) in [("nil", ""), ("", ""), ("cursor-opaco", "cursor-opaco")] {
+        db.lock().unwrap().bookmark_override = Some(upstream.into());
+        for actor in ["pyme", "admin"] {
+            let response = client_for(actor)
+                .get(format!("{}/api/empresas?limit=10", api.url))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let page: Value = response.json().await.unwrap();
+            assert!(page["empresas"].as_array().unwrap().is_empty());
+            assert_eq!(page["bookmark"], expected);
+            assert_eq!(page["limit"], 10);
+        }
+    }
+    assert!(db.lock().unwrap().documents.is_empty());
 }
 
 #[tokio::test]

@@ -6,10 +6,14 @@ import 'auth_widgets.dart';
 
 class RegistroUsuarioScreen extends StatefulWidget {
   const RegistroUsuarioScreen(
-      {super.key, required this.onGuardar, this.onCreado});
+      {super.key,
+      required this.onGuardar,
+      this.onCreado,
+      this.esperaAutenticacion = 0});
 
   final Future<void> Function(Map<String, String>) onGuardar;
   final ValueChanged<String>? onCreado;
+  final int esperaAutenticacion;
 
   @override
   State<RegistroUsuarioScreen> createState() => _RegistroUsuarioScreenState();
@@ -33,7 +37,11 @@ class _RegistroUsuarioScreenState extends State<RegistroUsuarioScreen> {
   }
 
   Future<void> _guardar() async {
-    if (_guardando || !_formKey.currentState!.validate()) return;
+    if (_guardando ||
+        widget.esperaAutenticacion > 0 ||
+        !_formKey.currentState!.validate()) {
+      return;
+    }
     setState(() => _guardando = true);
     try {
       await widget.onGuardar({
@@ -291,15 +299,20 @@ class _RegistroUsuarioScreenState extends State<RegistroUsuarioScreen> {
                         ConstrainedBox(
                           constraints: const BoxConstraints(minHeight: 52),
                           child: FilledButton(
-                            onPressed: _guardando ? null : _guardar,
+                            onPressed:
+                                _guardando || widget.esperaAutenticacion > 0
+                                    ? null
+                                    : _guardar,
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Flexible(
                                   child: Text(
-                                    _guardando
-                                        ? 'Creando cuenta...'
-                                        : 'Crear cuenta',
+                                    widget.esperaAutenticacion > 0
+                                        ? 'Reintentar en ${widget.esperaAutenticacion} s'
+                                        : _guardando
+                                            ? 'Creando cuenta...'
+                                            : 'Crear cuenta',
                                     textAlign: TextAlign.center,
                                   ),
                                 ),

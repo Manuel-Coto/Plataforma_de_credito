@@ -180,6 +180,9 @@ impl FacturaRepository {
             return Err(Self::map_error(r, false).await);
         }
         let found: FindResponse = r.json().await.map_err(|_| FacturaError::Upstream)?;
-        Ok((found.docs, found.bookmark))
+        Ok((
+            found.docs,
+            crate::database::normalizar_bookmark(found.bookmark),
+        ))
     }
 }

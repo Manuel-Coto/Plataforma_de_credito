@@ -32,3 +32,7 @@ También comprueba que repetir la creación de empresa o factura con la misma cl
 ## Última ejecución comprobada
 
 El 8 de noviembre de 2026 se ejecutó la versión final contra CouchDB local: **1 prueba aprobada, 0 fallos**, incluidos los controles de metadatos privados y revisión obsoleta. Se crearon y eliminaron las seis bases aisladas. La suite general del backend se ejecutó por separado con **84 pruebas aprobadas**, sin fallos; sus pruebas reales quedan excluidas por defecto. Esta evidencia cubre el recorrido indicado; no constituye una prueba de carga, de banca real ni de validación externa tributaria.
+
+## Verificación actualizada: 9 de noviembre de 2026
+
+Se ejecutaron nuevamente cargo fmt --check, cargo test --locked (87 aprobadas y 4 ignoradas por defecto) y el recorrido aislado real_couchdb_isolated_six_module_lifecycle (1 aprobado). El recorrido verificó los tres roles, empresa, factura, oferta, aporte, crédito, pago completo, liquidación, reportes, auditoría y listas vacías/paginación. Se confirmó la eliminación de las seis bases creadas por esa ejecución. La aceptación fue automatizada a través de la API real, separada de las pruebas de pantallas Flutter.
