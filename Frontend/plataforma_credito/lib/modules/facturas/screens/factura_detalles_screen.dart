@@ -77,7 +77,7 @@ class _FacturaDetalleScreenState extends State<FacturaDetalleScreen> {
         builder: (dialogContext) => AlertDialog(
               title: const Text('¿Confirmar revisión del DTE?'),
               content: const Text(
-                  'La factura quedará disponible para financiamiento. Esta es una revisión interna; no consulta ni certifica el documento ante Hacienda.'),
+                  'La factura quedará disponible para financiamiento.'),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(dialogContext, false),
@@ -225,7 +225,7 @@ class _FacturaDetalleScreenState extends State<FacturaDetalleScreen> {
               factura.estado == EstadoFactura.pendienteVerificacion)
             SeccionCard(titulo: 'Revisión administrativa', children: [
               const Text(
-                  'Revisa el documento e ingresa su sello de recepción. Esta revisión interna no realiza una validación automática ante Hacienda.'),
+                  'Revisa el documento e ingresa su sello de recepción.'),
               const SizedBox(height: 20),
               TextField(
                   controller: _sello,
