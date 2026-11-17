@@ -1,0 +1,1 @@
+Fecha=2026-11-12T21:54:58; Segundos=7.05; CodigoSalida=0
